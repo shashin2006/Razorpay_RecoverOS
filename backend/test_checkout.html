@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>RecoveryOS Test Checkout</title>
+</head>
+
+<body>
+
+    <h1>RecoveryOS — Test Payment</h1>
+
+    <p>Amount: ₹500</p>
+
+    <button id="pay-button">
+        Pay ₹500
+    </button>
+
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+    <script>
+
+        document.getElementById("pay-button").onclick = function () {
+
+            const options = {
+                key: "rzp_test_TVu4po0rAsPqeU",
+
+                amount: 50000,
+
+                currency: "INR",
+
+                name: "RecoveryOS",
+
+                description: "Revenue Recovery Test",
+
+                order_id: "order_TW22i3MDm5wwH7",
+
+                handler: function (response) {
+
+                    console.log("Payment successful");
+
+                    console.log(response);
+
+                },
+
+                theme: {
+                    color: "#3399cc"
+                }
+            };
+
+            const razorpay = new Razorpay(options);
+
+            razorpay.open();
+        };
+
+    </script>
+
+</body>
+</html>
