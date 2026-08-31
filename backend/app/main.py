@@ -5,7 +5,7 @@ from app.db.database import Base, engine, get_db
 from app.db import models
 from app.api.webhooks import router as webhook_router
 from fastapi.responses import FileResponse
-
+from app.api.ml import router as ml_router
 from app.core.logging_config import configure_logging
 
 Base.metadata.create_all(bind=engine)
@@ -15,6 +15,7 @@ configure_logging()
 app = FastAPI(title="RecoveryOS")
 
 app.include_router(webhook_router)
+app.include_router(ml_router)
 
 @app.get("/health")
 async def health():

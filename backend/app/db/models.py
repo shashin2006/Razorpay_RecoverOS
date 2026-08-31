@@ -180,6 +180,11 @@ class RecoveryCase(Base):
         nullable=False,
         default=lambda: datetime.now(timezone.utc),
     )
+    amount_recovered: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+    )
 
 
 class RecoveryAction(Base):
@@ -234,4 +239,105 @@ class RecoveryAction(Base):
     payment_link_url: Mapped[str | None] = mapped_column(
         String(500),
         nullable=True,
+    )
+
+class MLPrediction(Base):
+    __tablename__ = "ml_predictions"
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+        autoincrement=True,
+    )
+
+    recovery_case_id: Mapped[int] = mapped_column(
+        nullable=False,
+        index=True,
+    )
+
+    probability: Mapped[float] = mapped_column(
+        nullable=False,
+    )
+
+    threshold: Mapped[float] = mapped_column(
+        nullable=False,
+    )
+
+    recommendation: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+    )
+
+    model_version: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+    )
+
+    mode: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+        default="shadow",
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    actual_recovered: Mapped[int] = mapped_column(
+        Integer,
+        nullable=True,
+    )
+
+    outcome_recorded: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+        default=False,
+    )
+
+class MLDecisionAudit(Base):
+    __tablename__ = "ml_decision_audits"
+
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+        autoincrement=True,
+    )
+
+    recovery_case_id: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        index=True,
+    )
+
+    policy_eligible: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+    )
+
+    policy_action: Mapped[str] = mapped_column(
+        String(100),
+        nullable=False,
+    )
+
+    ml_probability: Mapped[float] = mapped_column(
+        nullable=False,
+    )
+
+    ml_threshold: Mapped[float] = mapped_column(
+        nullable=False,
+    )
+
+    ml_recommendation: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+    )
+
+    agreement: Mapped[bool] = mapped_column(
+        Boolean,
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
     )

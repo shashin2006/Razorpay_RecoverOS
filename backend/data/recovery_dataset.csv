@@ -1,0 +1,4 @@
+amount_minor,currency,payment_method,failure_category,error_source,error_step,error_reason,error_code,attempts,action_type,attempt_number,recovered,data_source
+50000,INR,netbanking,bank_decline,bank,payment_authorization,payment_failed,BAD_REQUEST_ERROR,1,alternate_payment_method,1,0,real
+50000,INR,netbanking,bank_decline,bank,payment_authorization,payment_failed,BAD_REQUEST_ERROR,1,alternate_payment_method,1,0,real
+50000,INR,netbanking,bank_decline,bank,payment_authorization,payment_failed,BAD_REQUEST_ERROR,1,alternate_payment_method,1,1,real

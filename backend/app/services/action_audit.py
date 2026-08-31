@@ -13,6 +13,7 @@ def record_action(
     attempt_number: int,
     reason: str,
     external_id: str | None = None,
+    payment_link_url: str | None = None,
 ) -> RecoveryAction:
 
     action = RecoveryAction(
@@ -22,6 +23,7 @@ def record_action(
         attempt_number=attempt_number,
         reason=reason,
         external_id=external_id,
+        payment_link_url=payment_link_url,
         created_at=datetime.now(timezone.utc),
     )
 
