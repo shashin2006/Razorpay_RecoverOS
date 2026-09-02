@@ -10,6 +10,11 @@ from app.services.payment_link import (
 )
 
 
+# Hard safety ceiling.
+# No automated recovery workflow can exceed this number.
+MAX_AUTOMATED_RECOVERY_ATTEMPTS = 2
+
+
 class ActionExecutionStatus(str, Enum):
     CREATED = "created"
     SKIPPED = "skipped"
@@ -50,8 +55,16 @@ def execute_recovery_action(
     # ----------------------------------------
     # PRE-EXECUTION GUARD 2
     # ----------------------------------------
+    # The caller may provide a policy limit,
+    # but it can NEVER exceed the hard safety
+    # ceiling enforced by the executor.
 
-    if recovery_case.attempts >= max_attempts:
+    effective_max_attempts = min(
+        max_attempts,
+        MAX_AUTOMATED_RECOVERY_ATTEMPTS,
+    )
+
+    if recovery_case.attempts >= effective_max_attempts:
 
         return ActionExecutionResult(
             status=ActionExecutionStatus.SKIPPED,
@@ -77,7 +90,11 @@ def execute_recovery_action(
                 description="RecoveryOS Revenue Recovery",
                 recovery_case_id=recovery_case.id,
             )
-            print("Razorpay Payment Link:", payment_link)
+
+            print(
+                "Razorpay Payment Link:",
+                payment_link,
+            )
 
             # ----------------------------------------
             # UPDATE CASE
@@ -97,7 +114,9 @@ def execute_recovery_action(
                 attempt_number=attempt_number,
                 reason=reason,
                 external_id=payment_link["id"],
-                payment_link_url=payment_link.get("short_url"),
+                payment_link_url=payment_link.get(
+                    "short_url"
+                ),
             )
 
             db.commit()
@@ -106,7 +125,9 @@ def execute_recovery_action(
                 status=ActionExecutionStatus.CREATED,
                 action=action,
                 external_id=payment_link["id"],
-                payment_link_url=payment_link.get("short_url"),
+                payment_link_url=payment_link.get(
+                    "short_url"
+                ),
                 message="Recovery payment link created.",
             )
 
@@ -122,6 +143,10 @@ def execute_recovery_action(
                 message=str(exc),
             )
 
+    # ----------------------------------------
+    # UNSUPPORTED ACTION
+    # ----------------------------------------
+
     return ActionExecutionResult(
         status=ActionExecutionStatus.SKIPPED,
         action=action,
@@ -130,33 +155,4 @@ def execute_recovery_action(
         message="Action is not currently executable.",
     )
 
-def execute_action(
-    action: str,
-    amount_minor: int,
-    currency: str,
-    recovery_case_id: int,
-) -> ActionExecutionResult:
 
-    if action != "alternate_payment_method":
-        return ActionExecutionResult(
-            status=ActionExecutionStatus.SKIPPED,
-            action=action,
-            external_id=None,
-            payment_link_url=None,
-            message="Action is not currently executable.",
-        )
-
-    payment_link = create_recovery_payment_link(
-        amount_minor=amount_minor,
-        currency=currency,
-        description="RecoveryOS Revenue Recovery",
-        recovery_case_id=recovery_case_id,
-    )
-
-    return ActionExecutionResult(
-        status=ActionExecutionStatus.CREATED,
-        action=action,
-        external_id=payment_link["id"],
-        payment_link_url=payment_link.get("short_url"),
-        message="Recovery payment link created.",
-    )

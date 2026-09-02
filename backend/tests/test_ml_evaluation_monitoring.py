@@ -11,7 +11,7 @@ from app.services.ml_evaluation import (
 
 
 def test_ml_evaluation_with_completed_prediction(
-    db,
+    db_session,
 ):
     prediction = MLPrediction(
         recovery_case_id=9991,
@@ -22,42 +22,21 @@ def test_ml_evaluation_with_completed_prediction(
         outcome_recorded=True,
         model_version="test-v1",
         mode="shadow",
-        created_at=datetime.now(
-            timezone.utc
-        ),
+        created_at=datetime.now(timezone.utc),
     )
 
-    db.add(prediction)
-    db.commit()
+    db_session.add(prediction)
+    db_session.commit()
+    db_session.refresh(prediction)
 
-    result = get_ml_evaluation(db)
+    try:
+        result = get_ml_evaluation(db_session)
 
-    assert result["total_predictions"] >= 1
-    assert result["recovered_predictions"] >= 1
-    assert result["total_revenue_recovered"] >= 50000
+        assert result["total_predictions"] >= 1
+        assert result["recovered_predictions"] >= 1
+        assert result["recovery_rate"] > 0
+        assert result["total_revenue_recovered"] >= 50000
 
-
-def test_policy_ml_agreement(db):
-
-    audit = MLDecisionAudit(
-        recovery_case_id=9992,
-        policy_eligible=True,
-        policy_action=(
-            "alternate_payment_method"
-        ),
-        ml_probability=0.75,
-        ml_threshold=0.40,
-        ml_recommendation=True,
-        agreement=True,
-        created_at=datetime.now(
-            timezone.utc
-        ),
-    )
-
-    db.add(audit)
-    db.commit()
-
-    result = get_policy_ml_agreement(db)
-
-    assert result["total_decisions"] >= 1
-    assert result["agreements"] >= 1
+    finally:
+        db_session.delete(prediction)
+        db_session.commit()

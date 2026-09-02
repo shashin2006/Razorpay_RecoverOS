@@ -19,15 +19,16 @@ from app.services.failure_classifier import (
 from app.services.ml_decision_service import (
     evaluate_ml_against_policy,
 )
+from app.services.recovery_policy import (
+    determine_recovery_action,
+)
 
-
-MAX_RECOVERY_ATTEMPTS = 3
 
 
 def create_recovery_case(
     db: Session,
     payment: Payment,
-    classification,
+    classification, 
 ) -> RecoveryCase:
 
     existing_case = (
@@ -107,7 +108,19 @@ def orchestrate_payment_failure(
     # SELECT EXISTING BOUNDED ACTION
     # ----------------------------------------
 
-    action = "alternate_payment_method"
+    policy_decision = determine_recovery_action(
+        recovery_case=recovery_case,
+    )
+
+    if not policy_decision.eligible:
+        return {
+        "status": "not_eligible",
+        "category": classification.category.value,
+        "action": policy_decision.action.value,
+        "message": policy_decision.reason,
+    }
+
+    action = policy_decision.action.value
 
     # ----------------------------------------
     # EXECUTE EXISTING RECOVERY ACTION
@@ -118,7 +131,7 @@ def orchestrate_payment_failure(
         recovery_case=recovery_case,
         action=action,
         reason=classification.reason,
-        max_attempts=MAX_RECOVERY_ATTEMPTS,
+        max_attempts=policy_decision.max_attempts,
     )
 
     # ----------------------------------------

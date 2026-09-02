@@ -100,7 +100,7 @@ def test_payment_failed_automatically_creates_recovery(
         call_kwargs = mock_execute_action.call_args.kwargs
 
         assert call_kwargs["action"] == "alternate_payment_method"
-        assert call_kwargs["max_attempts"] == 3
+        assert call_kwargs["max_attempts"] == 2
 
     finally:
 
