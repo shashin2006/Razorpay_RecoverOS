@@ -3,19 +3,12 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from app.services.llm.client import (
-    client,
-    NVIDIA_MODEL,
-)
-
+from app.services.llm.client import client, NVIDIA_MODEL
 from app.services.llm.agent_tools import (
     inspect_recovery_case,
     execute_bounded_recovery,
 )
-
-from app.services.llm.message_safety import (
-    make_safe_customer_message,
-)
+from app.services.llm.message_safety import make_safe_customer_message
 
 
 SYSTEM_PROMPT = """
@@ -75,35 +68,25 @@ action is actually executed.
 """
 
 
-# ============================================================
-# TOOL DEFINITIONS
-# ============================================================
-
 TOOLS = [
     {
         "type": "function",
         "function": {
             "name": "inspect_recovery_case",
             "description": (
-                "Inspect the authoritative RecoveryOS "
-                "state for a recovery case, including "
-                "payment information, recovery status, "
-                "latest action, ML prediction and "
-                "deterministic recovery policy."
+                "Inspect the authoritative RecoveryOS state for a recovery case, "
+                "including payment information, recovery status, latest action, "
+                "ML prediction and deterministic recovery policy."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "recovery_case_id": {
                         "type": "integer",
-                        "description": (
-                            "RecoveryOS recovery case ID."
-                        ),
-                    },
+                        "description": "RecoveryOS recovery case ID.",
+                    }
                 },
-                "required": [
-                    "recovery_case_id"
-                ],
+                "required": ["recovery_case_id"],
             },
         },
     },
@@ -112,43 +95,75 @@ TOOLS = [
         "function": {
             "name": "execute_bounded_recovery",
             "description": (
-                "Request execution of an approved "
-                "RecoveryOS recovery action. The action "
-                "is always validated by the deterministic "
-                "policy before execution."
+                "Request execution of an approved RecoveryOS recovery action. "
+                "The action is always validated by the deterministic policy "
+                "before execution."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "recovery_case_id": {
                         "type": "integer",
-                        "description": (
-                            "RecoveryOS recovery case ID."
-                        ),
+                        "description": "RecoveryOS recovery case ID.",
                     },
                     "action": {
                         "type": "string",
-                        "enum": [
-                            "alternate_payment_method"
-                        ],
-                        "description": (
-                            "Approved recovery action."
-                        ),
+                        "enum": ["alternate_payment_method"],
+                        "description": "Approved recovery action.",
                     },
                 },
-                "required": [
-                    "recovery_case_id",
-                    "action",
-                ],
+                "required": ["recovery_case_id", "action"],
             },
         },
     },
 ]
 
 
-# ============================================================
-# TOOL EXECUTION
-# ============================================================
+def _normalize_model_content(content: Any) -> str:
+    """Guarantee that model output exposed to the UI is a plain string."""
+    if content is None:
+        return ""
+
+    if isinstance(content, str):
+        return content.strip()
+
+    if isinstance(content, dict):
+        for key in (
+            "agent_assessment",
+            "assessment",
+            "reasoning",
+            "message",
+            "content",
+            "response",
+            "text",
+        ):
+            value = content.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
+
+        return json.dumps(content, ensure_ascii=False)
+
+    if isinstance(content, list):
+        parts = []
+
+        for item in content:
+            if isinstance(item, str) and item.strip():
+                parts.append(item.strip())
+            elif isinstance(item, dict):
+                value = (
+                    item.get("text")
+                    or item.get("content")
+                    or item.get("message")
+                )
+                if isinstance(value, str) and value.strip():
+                    parts.append(value.strip())
+
+        if parts:
+            return "\n".join(parts)
+
+        return json.dumps(content, ensure_ascii=False)
+
+    return str(content).strip()
 
 
 def _execute_tool(
@@ -156,36 +171,20 @@ def _execute_tool(
     name: str,
     arguments: dict[str, Any],
 ) -> dict:
-
     if name == "inspect_recovery_case":
-
         return inspect_recovery_case(
             db=db,
-            recovery_case_id=arguments[
-                "recovery_case_id"
-            ],
+            recovery_case_id=arguments["recovery_case_id"],
         )
 
     if name == "execute_bounded_recovery":
-
         return execute_bounded_recovery(
             db=db,
-            recovery_case_id=arguments[
-                "recovery_case_id"
-            ],
+            recovery_case_id=arguments["recovery_case_id"],
             action=arguments["action"],
         )
 
-    return {
-        "error": (
-            f"Unknown RecoveryOS tool: {name}"
-        )
-    }
-
-
-# ============================================================
-# AGENT
-# ============================================================
+    return {"error": f"Unknown RecoveryOS tool: {name}"}
 
 
 def run_recovery_agent(
@@ -193,19 +192,13 @@ def run_recovery_agent(
     recovery_case_id: int,
     max_iterations: int = 5,
 ) -> dict:
-
     messages = [
-        {
-            "role": "system",
-            "content": SYSTEM_PROMPT,
-        },
+        {"role": "system", "content": SYSTEM_PROMPT},
         {
             "role": "user",
             "content": (
-                "Handle RecoveryOS recovery case "
-                f"{recovery_case_id}.\n\n"
-                "Inspect the case first. "
-                "Use the available tools when necessary. "
+                f"Handle RecoveryOS recovery case {recovery_case_id}.\n\n"
+                "Inspect the case first. Use the available tools when necessary. "
                 "Follow all deterministic policy constraints."
             ),
         },
@@ -214,7 +207,6 @@ def run_recovery_agent(
     tool_calls_made = []
 
     for _ in range(max_iterations):
-
         response = client.chat.completions.create(
             model=NVIDIA_MODEL,
             messages=messages,
@@ -232,166 +224,79 @@ def run_recovery_agent(
 
         message = response.choices[0].message
 
-        # ----------------------------------------------------
-        # MODEL FINISHED
-        # ----------------------------------------------------
-
         if not message.tool_calls:
+            original_message = _normalize_model_content(message.content)
 
-            original_message = (
-                message.content or ""
-            ).strip()
-
-            # ------------------------------------------------
-            # CONTENT SAFETY GATE
-            # ------------------------------------------------
             if original_message:
-
                 agent_assessment = original_message
-
             else:
-
                 agent_assessment = (
                     "Recovery agent completed processing "
                     "without returning a final assessment."
                 )
 
-            customer_message = (
-                "We couldn't complete your payment. "
-                "Please use the available recovery option "
-                "to try the payment again."
-            )
-
-            safety_result = (
-                make_safe_customer_message(
-                    original_message
-                )
-            )
+            safety_result = make_safe_customer_message(original_message)
 
             return {
                 "status": "completed",
-
-                # Safe message that can be exposed
-                # to the customer.
-                "message": safety_result[
-                    "message"
-                ],
-                "agent_assessment": (
-                   agent_assessment
-                ),
-
-                # Keep the safety decision visible
-                # to the application layer.
+                "message": safety_result["message"],
+                "agent_assessment": agent_assessment,
                 "content_safety": {
-                    "safe": safety_result[
-                        "safe"
-                    ],
-                    "reason": safety_result[
-                        "reason"
-                    ],
-                    "fallback_used": (
-                        safety_result[
-                            "fallback_used"
-                        ]
-                    ),
+                    "safe": safety_result["safe"],
+                    "reason": safety_result["reason"],
+                    "fallback_used": safety_result["fallback_used"],
                 },
-
-                # Preserve the model output for
-                # internal inspection/auditing.
-                "original_message": (
-                    original_message
-                ),
-
+                "original_message": original_message,
                 "tool_calls": tool_calls_made,
             }
 
-        # ----------------------------------------------------
-        # PRESERVE ASSISTANT TOOL-CALL MESSAGE
-        # ----------------------------------------------------
-
         assistant_message = {
             "role": "assistant",
-            "content": message.content or "",
+            "content": _normalize_model_content(message.content),
             "tool_calls": [],
         }
 
         for tool_call in message.tool_calls:
-
-            assistant_message[
-                "tool_calls"
-            ].append(
+            assistant_message["tool_calls"].append(
                 {
                     "id": tool_call.id,
                     "type": "function",
                     "function": {
                         "name": tool_call.function.name,
-                        "arguments": (
-                            tool_call.function.arguments
-                        ),
+                        "arguments": tool_call.function.arguments,
                     },
                 }
             )
 
-        messages.append(
-            assistant_message
-        )
+        messages.append(assistant_message)
 
-        # ----------------------------------------------------
-        # EXECUTE REQUESTED TOOLS
-        # ----------------------------------------------------
+        allowed_tools = {
+            "inspect_recovery_case",
+            "execute_bounded_recovery",
+        }
 
         for tool_call in message.tool_calls:
-
-            tool_name = (
-                tool_call.function.name
-            )
+            tool_name = tool_call.function.name
 
             try:
-
-                arguments = json.loads(
-                    tool_call.function.arguments
-                )
-
+                arguments = json.loads(tool_call.function.arguments)
             except json.JSONDecodeError:
-
                 tool_result = {
-                    "error": (
-                        "Invalid JSON arguments "
-                        "returned by the model."
-                    )
+                    "error": "Invalid JSON arguments returned by the model."
                 }
 
                 messages.append(
                     {
                         "role": "tool",
                         "tool_call_id": tool_call.id,
-                        "content": json.dumps(
-                            tool_result
-                        ),
+                        "content": json.dumps(tool_result),
                     }
                 )
-
                 continue
 
-            # ------------------------------------------------
-            # HARD TOOL ALLOWLIST
-            # ------------------------------------------------
-
-            allowed_tools = {
-                "inspect_recovery_case",
-                "execute_bounded_recovery",
-            }
-
             if tool_name not in allowed_tools:
-
-                tool_result = {
-                    "error": (
-                        "Tool is not permitted."
-                    )
-                }
-
+                tool_result = {"error": "Tool is not permitted."}
             else:
-
                 tool_result = _execute_tool(
                     db=db,
                     name=tool_name,

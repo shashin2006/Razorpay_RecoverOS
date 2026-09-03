@@ -1,40 +1,650 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>RecoveryOS — Test Payment</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RecoveryOS — Dynamic Test Console</title>
+
+    <style>
+        :root {
+            --bg:#f6f8fc; --card:#fff; --border:#e7eaf2;
+            --text:#111827; --muted:#667085; --primary:#5146e5;
+            --primary-dark:#4338ca; --success:#087443; --danger:#b42318;
+            --warning:#9a5b00;
+        }
+        *{box-sizing:border-box}
+        body{
+            margin:0; min-height:100vh; color:var(--text);
+            font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+            background:
+              radial-gradient(circle at 8% 5%,rgba(81,70,229,.11),transparent 28%),
+              radial-gradient(circle at 92% 90%,rgba(14,165,164,.09),transparent 28%),
+              var(--bg);
+        }
+        button,input,select,textarea{font:inherit}
+        .shell{width:min(1180px,calc(100% - 36px));margin:auto;padding:25px 0 42px}
+        .header{display:flex;justify-content:space-between;align-items:center;gap:18px;margin-bottom:22px}
+        .brand{display:flex;align-items:center;gap:12px}
+        .logo{width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--primary);color:#fff;font-weight:900;box-shadow:0 9px 25px rgba(81,70,229,.24)}
+        .brand-title{font-size:15px;font-weight:850}.brand-subtitle{font-size:11px;color:var(--muted);margin-top:2px}
+        .badge{display:flex;align-items:center;gap:7px;border:1px solid #f5b942;background:#fffaf0;color:var(--warning);padding:7px 11px;border-radius:999px;font:800 10px ui-monospace,monospace}
+        .dot{width:6px;height:6px;border-radius:50%;background:#f59e0b}
+        .hero{display:grid;grid-template-columns:1.45fr .55fr;gap:18px;margin-bottom:18px}
+        .card{background:rgba(255,255,255,.92);border:1px solid var(--border);border-radius:18px;box-shadow:0 16px 45px rgba(16,24,40,.07)}
+        .hero-card{padding:28px 30px}.eyebrow{color:var(--primary);font:800 10px ui-monospace,monospace;text-transform:uppercase;letter-spacing:.08em;margin-bottom:9px}
+        h1{margin:0;font-size:clamp(28px,4vw,42px);line-height:1.03;letter-spacing:-.045em}
+        .hero-copy{margin:13px 0 0;max-width:720px;color:var(--muted);font-size:13px;line-height:1.65}
+        .amount-card{padding:25px;display:flex;flex-direction:column;justify-content:center}
+        .label{font-size:10px;color:var(--muted);font-weight:800;text-transform:uppercase;letter-spacing:.07em}
+        .amount{font-size:38px;font-weight:900;letter-spacing:-.045em;margin:7px 0 2px}
+        .amount-meta{font:700 10px ui-monospace,monospace;color:var(--muted)}
+        .grid{display:grid;grid-template-columns:1.08fr .92fr;gap:18px}
+        .section{padding:22px}.full{grid-column:1/-1}
+        .title-row{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:17px}
+        h2{margin:0;font-size:14px}.desc{margin:4px 0 0;color:var(--muted);font-size:11px;line-height:1.5}
+        .pill{white-space:nowrap;border-radius:999px;padding:5px 8px;background:#f2f4f7;color:#475467;font:800 9px ui-monospace,monospace;text-transform:uppercase}
+        .pill.ready{background:#eef2ff;color:#4338ca}.pill.processing{background:#fffaeb;color:#9a5b00}.pill.success{background:#ecfdf3;color:#087443}.pill.failed{background:#fef3f2;color:#b42318}
+        .form{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+        .field{display:grid;gap:6px}.field.full-field{grid-column:1/-1}
+        label{font-size:10px;font-weight:800;color:#475467}
+        input,select,textarea{
+            width:100%;border:1px solid #dfe3ea;border-radius:9px;background:#fff;
+            padding:10px 11px;color:#101828;font-size:12px;outline:none;transition:.15s
+        }
+        input:focus,select:focus,textarea:focus{border-color:#a5b4fc;box-shadow:0 0 0 3px rgba(81,70,229,.08)}
+        textarea{min-height:70px;resize:vertical}
+        .hint{font-size:9px;color:#98a2b3}
+        .primary{
+            width:100%;margin-top:16px;border:0;border-radius:10px;padding:13px 16px;
+            background:var(--primary);color:white;font-size:12px;font-weight:850;cursor:pointer;
+            box-shadow:0 8px 18px rgba(81,70,229,.19)
+        }
+        .primary:hover{background:var(--primary-dark)}.primary:disabled{opacity:.55;cursor:not-allowed}
+        .secondary{border:1px solid var(--border);background:#fff;color:#475467;border-radius:9px;padding:9px 11px;font-size:10px;font-weight:750;cursor:pointer}
+        .secondary:hover{background:#f8fafc}
+        .actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
+        .status{min-height:18px;text-align:center;color:var(--muted);font-size:10px;margin-top:9px}
+        .details{display:grid}.row{display:grid;grid-template-columns:110px 1fr;gap:15px;padding:10px 0;border-bottom:1px solid #f0f2f5;font-size:11px}
+        .row:last-child{border-bottom:0}.row-label{color:#667085}.row-value{text-align:right;color:#344054;font:11px ui-monospace,monospace;overflow-wrap:anywhere}
+        .flow{display:grid;grid-template-columns:repeat(4,1fr);gap:9px}
+        .step{min-height:105px;padding:15px;border:1px solid var(--border);border-radius:12px;background:#fbfcfe;position:relative}
+        .step.active{background:#f5f7ff;border-color:#c7d2fe}.step.complete{background:#f3fdf7;border-color:#bbf7d0}.step.error{background:#fff7f7;border-color:#fecaca}
+        .step-no{font:800 9px ui-monospace,monospace;color:#98a2b3}.active .step-no{color:var(--primary)}.complete .step-no{color:var(--success)}.error .step-no{color:var(--danger)}
+        .step-title{margin-top:7px;font-size:11px;font-weight:850}.step-desc{margin-top:5px;font-size:10px;line-height:1.45;color:var(--muted)}
+        .step-dot{position:absolute;right:11px;top:12px;width:7px;height:7px;border-radius:50%;background:#d0d5dd}.active .step-dot{background:var(--primary);box-shadow:0 0 0 4px rgba(81,70,229,.09)}.complete .step-dot{background:#12b76a}.error .step-dot{background:#f04438}
+        .notice{display:flex;gap:9px;margin-top:15px;padding:11px 12px;border:1px solid #fedf89;border-radius:10px;background:#fffcf5;color:#925e0a;font-size:10px;line-height:1.5}
+        .timeline{display:grid;gap:7px}.event{display:flex;align-items:center;gap:10px;padding:9px 10px;border:1px solid #f0f2f5;border-radius:9px;background:#fcfcfd;font-size:10px}
+        .event-icon{width:21px;height:21px;display:grid;place-items:center;border-radius:7px;background:#f2f4f7;color:#667085;font-size:9px;font-weight:850}
+        .event-main{flex:1;min-width:0}.event-name{font-weight:750}.event-time{margin-top:2px;color:#98a2b3;font:9px ui-monospace,monospace}.event-status{font:800 9px ui-monospace,monospace;color:#667085}
+        .footer{text-align:center;margin-top:19px;color:#98a2b3;font:9px ui-monospace,monospace}
+        .toast{position:fixed;right:20px;bottom:20px;max-width:380px;padding:11px 13px;border:1px solid var(--border);border-radius:10px;background:#fff;box-shadow:0 14px 35px rgba(16,24,40,.13);font-size:11px;opacity:0;transform:translateY(8px);transition:.2s;pointer-events:none;z-index:20}
+        .toast.show{opacity:1;transform:none}.toast.error{border-color:#fecdca}.toast.success{border-color:#abefc6}
+        .error-box{display:none;margin-top:10px;padding:10px;border:1px solid #fecdca;border-radius:9px;background:#fef3f2;color:#b42318;font-size:10px;line-height:1.5}
+        .error-box.show{display:block}
+        @media(max-width:820px){.hero,.grid{grid-template-columns:1fr}.full{grid-column:auto}.flow{grid-template-columns:1fr 1fr}}
+        @media(max-width:520px){.shell{width:calc(100% - 20px);padding-top:16px}.header{align-items:flex-start}.badge{font-size:9px}.hero-card,.amount-card,.section{padding:18px}.form{grid-template-columns:1fr}.field.full-field{grid-column:auto}.flow{grid-template-columns:1fr}.row{grid-template-columns:90px 1fr}}
+    </style>
 </head>
 
 <body>
+<div class="shell">
 
-    <h1>RecoveryOS — Test Payment</h1>
+    <header class="header">
+        <div class="brand">
+            <div class="logo">R</div>
+            <div>
+                <div class="brand-title">RecoveryOS</div>
+                <div class="brand-subtitle">Revenue Recovery Test Console</div>
+            </div>
+        </div>
+        <div class="badge"><span class="dot"></span> RAZORPAY TEST MODE</div>
+    </header>
 
-    <p>Amount: ₹500</p>
+    <section class="hero">
+        <div class="card hero-card">
+            <div class="eyebrow">● Dynamic Test Session</div>
+            <h1>Configure your test transaction.</h1>
+            <p class="hero-copy">
+                Enter the customer and transaction details below. RecoveryOS
+                will create a real Razorpay Test Mode order only after you
+                submit the form, then launch Razorpay Checkout with those
+                details.
+            </p>
+        </div>
 
-    <button id="pay-button">Pay ₹500</button>
+        <div class="card amount-card">
+            <div class="label">Test Amount</div>
+            <div class="amount" id="hero-amount">₹0.00</div>
+            <div class="amount-meta" id="hero-meta">INR · Waiting for input</div>
+        </div>
+    </section>
 
-    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <main class="grid">
 
-    <script>
-        const checkoutConfig = {
-            key: "{{ razorpay_key_id }}",
-            amount: {{ amount }},
-            currency: "{{ currency }}",
-            name: "RecoveryOS",
-            description: "Revenue Recovery Test",
-            order_id: "{{ order_id }}",
+        <section class="card section">
+            <div class="title-row">
+                <div>
+                    <h2>Test Transaction Input</h2>
+                    <p class="desc">These values are used to create the Razorpay Test Mode order.</p>
+                </div>
+                <span class="pill ready" id="state-pill">Not created</span>
+            </div>
 
-            handler: function (response) {
-                console.log("Payment successful");
-                console.log(response);
+            <form id="test-form">
+                <div class="form">
+
+                    <div class="field">
+                        <label for="amount">Amount (INR)</label>
+                        <input id="amount" name="amount" type="number"
+                               min="1" max="100000" step="1"
+                               placeholder="500" required>
+                        <div class="hint">Enter the amount in rupees.</div>
+                    </div>
+
+                    <div class="field">
+                        <label for="currency">Currency</label>
+                        <select id="currency" name="currency">
+                            <option value="INR">INR — Indian Rupee</option>
+                        </select>
+                    </div>
+
+                    <div class="field">
+                        <label for="customer-name">Customer Name</label>
+                        <input id="customer-name" name="customer_name"
+                               type="text" maxlength="80"
+                               placeholder="Test Customer" required>
+                    </div>
+
+                    <div class="field">
+                        <label for="customer-contact">Mobile Number</label>
+                        <input id="customer-contact" name="customer_contact"
+                               type="tel" maxlength="15"
+                               placeholder="9876543210" required>
+                    </div>
+
+                    <div class="field full-field">
+                        <label for="customer-email">Customer Email</label>
+                        <input id="customer-email" name="customer_email"
+                               type="email" maxlength="120"
+                               placeholder="customer@example.com" required>
+                    </div>
+
+                    <div class="field full-field">
+                        <label for="description">Transaction Description</label>
+                        <textarea id="description" name="description"
+                                  maxlength="120"
+                                  placeholder="RecoveryOS Revenue Recovery Test">RecoveryOS Revenue Recovery Test</textarea>
+                    </div>
+
+                </div>
+
+                <button class="primary" id="create-button" type="submit">
+                    Create Test Order &amp; Open Checkout
+                </button>
+            </form>
+
+            <div class="error-box" id="form-error"></div>
+
+            <div class="actions">
+                <button class="secondary" id="reset-button" type="button">Reset Form</button>
+                <button class="secondary" id="new-session" type="button">New Test Session</button>
+            </div>
+
+            <div class="status" id="status">
+                Enter the required fields to begin.
+            </div>
+        </section>
+
+        <section class="card section">
+            <div class="title-row">
+                <div>
+                    <h2>Current Order</h2>
+                    <p class="desc">The order is created dynamically after form submission.</p>
+                </div>
+                <span class="pill" id="order-pill">Waiting</span>
+            </div>
+
+            <div class="details">
+                <div class="row">
+                    <span class="row-label">Order ID</span>
+                    <span class="row-value" id="order-id">Not created</span>
+                </div>
+                <div class="row">
+                    <span class="row-label">Amount</span>
+                    <span class="row-value" id="order-amount">—</span>
+                </div>
+                <div class="row">
+                    <span class="row-label">Customer</span>
+                    <span class="row-value" id="order-customer">—</span>
+                </div>
+                <div class="row">
+                    <span class="row-label">Email</span>
+                    <span class="row-value" id="order-email">—</span>
+                </div>
+                <div class="row">
+                    <span class="row-label">Description</span>
+                    <span class="row-value" id="order-description">—</span>
+                </div>
+                <div class="row">
+                    <span class="row-label">Environment</span>
+                    <span class="row-value">Razorpay Test Mode</span>
+                </div>
+            </div>
+
+            <div class="notice">
+                <strong>TEST</strong>
+                <span>
+                    No real money is processed. This console sends the entered
+                    values to your FastAPI backend, which creates the order
+                    using your Razorpay Test Mode credentials.
+                </span>
+            </div>
+        </section>
+
+        <section class="card section full">
+            <div class="title-row">
+                <div>
+                    <h2>RecoveryOS Test Flow</h2>
+                    <p class="desc">
+                        Browser state is shown here, while webhook, recovery and
+                        audit state remain authoritative in the RecoveryOS dashboard.
+                    </p>
+                </div>
+                <span class="pill" id="monitor-pill">Waiting</span>
+            </div>
+
+            <div class="flow">
+                <div class="step active" id="step-order">
+                    <span class="step-dot"></span>
+                    <div class="step-no">STEP 01</div>
+                    <div class="step-title">Configure &amp; Create</div>
+                    <div class="step-desc">User enters the transaction details and RecoveryOS creates the Test Mode order.</div>
+                </div>
+                <div class="step" id="step-checkout">
+                    <span class="step-dot"></span>
+                    <div class="step-no">STEP 02</div>
+                    <div class="step-title">Razorpay Checkout</div>
+                    <div class="step-desc">The real Razorpay sandbox checkout opens using the generated order.</div>
+                </div>
+                <div class="step" id="step-webhook">
+                    <span class="step-dot"></span>
+                    <div class="step-no">STEP 03</div>
+                    <div class="step-title">Webhook</div>
+                    <div class="step-desc">Razorpay sends the payment event to the RecoveryOS webhook endpoint.</div>
+                </div>
+                <div class="step" id="step-recovery">
+                    <span class="step-dot"></span>
+                    <div class="step-no">STEP 04</div>
+                    <div class="step-title">Recovery</div>
+                    <div class="step-desc">ML advises and deterministic policy controls any bounded recovery action.</div>
+                </div>
+            </div>
+        </section>
+
+        <section class="card section full">
+            <div class="title-row">
+                <div>
+                    <h2>Live Test Timeline</h2>
+                    <p class="desc">Events observed by this browser session.</p>
+                </div>
+            </div>
+
+            <div class="timeline" id="timeline">
+                <div class="event">
+                    <div class="event-icon">01</div>
+                    <div class="event-main">
+                        <div class="event-name">Console loaded</div>
+                        <div class="event-time" id="initial-time">—</div>
+                    </div>
+                    <div class="event-status">READY</div>
+                </div>
+            </div>
+        </section>
+
+    </main>
+
+    <div class="footer">
+        RecoveryOS · Razorpay Test Mode · Deterministic policy remains authoritative
+    </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+<script>
+    const RAZORPAY_KEY = "{{ razorpay_key_id }}";
+    const ORDER_API = "/api/test-checkout/order";
+
+    const form = document.getElementById("test-form");
+    const createButton = document.getElementById("create-button");
+    const formError = document.getElementById("form-error");
+    const status = document.getElementById("status");
+    const timeline = document.getElementById("timeline");
+
+    let eventNumber = 1;
+    let currentOrder = null;
+
+    function timeNow() {
+        return new Date().toLocaleTimeString([], {
+            hour: "2-digit", minute: "2-digit", second: "2-digit"
+        });
+    }
+
+    document.getElementById("initial-time").textContent = timeNow();
+
+    function setPill(id, text, state = "") {
+        const el = document.getElementById(id);
+        el.textContent = text;
+        el.className = "pill";
+        if (state) el.classList.add(state);
+    }
+
+    function step(id, state) {
+        const el = document.getElementById(id);
+        el.classList.remove("active", "complete", "error");
+        if (state) el.classList.add(state);
+    }
+
+    function addEvent(name, state = "INFO", type = "") {
+        eventNumber++;
+
+        const row = document.createElement("div");
+        row.className = "event";
+
+        const icon = document.createElement("div");
+        icon.className = "event-icon";
+        icon.textContent = String(eventNumber).padStart(2, "0");
+
+        const main = document.createElement("div");
+        main.className = "event-main";
+
+        const eventName = document.createElement("div");
+        eventName.className = "event-name";
+        eventName.textContent = name;
+
+        const eventTime = document.createElement("div");
+        eventTime.className = "event-time";
+        eventTime.textContent = timeNow();
+
+        main.append(eventName, eventTime);
+
+        const eventStatus = document.createElement("div");
+        eventStatus.className = "event-status";
+        eventStatus.textContent = state;
+        if (type === "success") eventStatus.style.color = "#087443";
+        if (type === "error") eventStatus.style.color = "#b42318";
+
+        row.append(icon, main, eventStatus);
+        timeline.appendChild(row);
+    }
+
+    function toast(message, type = "") {
+        const el = document.getElementById("toast");
+        el.textContent = message;
+        el.className = "toast show " + type;
+        clearTimeout(window.__toast);
+        window.__toast = setTimeout(() => el.className = "toast", 2800);
+    }
+
+    function showError(message) {
+        formError.textContent = message;
+        formError.classList.add("show");
+    }
+
+    function clearError() {
+        formError.textContent = "";
+        formError.classList.remove("show");
+    }
+
+    function updateAmountPreview() {
+        const amount = Number(document.getElementById("amount").value || 0);
+        document.getElementById("hero-amount").textContent =
+            "₹" + amount.toLocaleString("en-IN", {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            });
+
+        document.getElementById("hero-meta").textContent =
+            amount > 0 ? "INR · Ready to create" : "INR · Waiting for input";
+    }
+
+    document.getElementById("amount").addEventListener("input", updateAmountPreview);
+
+    async function createOrder(payload) {
+        const response = await fetch(ORDER_API, {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await response.json().catch(() => null);
+
+        if (!response.ok) {
+            let message = "Could not create Test Mode order.";
+            if (typeof data?.detail === "string") {
+                message = data.detail;
+            } else if (Array.isArray(data?.detail)) {
+                message = data.detail
+                    .map(item => item.msg || "Invalid input")
+                    .join("; ");
             }
-        };
+            throw new Error(message);
+        }
 
-        document.getElementById("pay-button").onclick = function () {
-            const razorpay = new Razorpay(checkoutConfig);
-            razorpay.open();
-        };
-    </script>
+        return data;
+    }
+
+    function launchCheckout(order) {
+        if (typeof Razorpay === "undefined") {
+            throw new Error("Razorpay Checkout could not be loaded.");
+        }
+
+        const rzp = new Razorpay({
+            key: RAZORPAY_KEY,
+            amount: order.amount,
+            currency: order.currency,
+            name: "RecoveryOS",
+            description: order.description,
+            order_id: order.order_id,
+
+            prefill: {
+                name: order.customer.name,
+                email: order.customer.email,
+                contact: order.customer.contact
+            },
+
+            notes: {
+                recoveryos_test: "true",
+                test_order_id: order.order_id
+            },
+
+            theme: {
+                color: "#5146e5"
+            },
+
+            modal: {
+                ondismiss: function () {
+                    createButton.disabled = false;
+                    createButton.textContent = "Create Test Order & Open Checkout";
+
+                    setPill("state-pill", "Ready", "ready");
+                    setPill("monitor-pill", "Waiting");
+
+                    step("step-checkout", null);
+
+                    status.textContent =
+                        "Checkout closed. The order remains available in Razorpay Test Mode.";
+
+                    addEvent("Razorpay Checkout closed", "CLOSED");
+                }
+            }
+        });
+
+        rzp.on("payment.failed", function (response) {
+            createButton.disabled = false;
+            createButton.textContent = "Create New Test Order";
+
+            setPill("state-pill", "Payment Failed", "failed");
+            setPill("monitor-pill", "Webhook Pending", "processing");
+
+            step("step-checkout", "error");
+            step("step-webhook", "active");
+
+            document.getElementById("order-pill").textContent = "Payment failed";
+
+            status.textContent =
+                "Payment failed in Test Mode. RecoveryOS is waiting for the Razorpay webhook.";
+
+            addEvent("Razorpay payment failed", "FAILED", "error");
+            toast("Payment failed — webhook should reach RecoveryOS.", "error");
+
+            console.log("Razorpay payment.failed:", response);
+        });
+
+        rzp.on("payment.authorized", function (response) {
+            console.log("Razorpay payment.authorized:", response);
+        });
+
+        rzp.open();
+
+        setPill("state-pill", "Checkout Open", "processing");
+        setPill("monitor-pill", "Checkout", "processing");
+        step("step-order", "complete");
+        step("step-checkout", "active");
+
+        document.getElementById("order-pill").textContent = "Created";
+        status.textContent = "Razorpay Test Mode Checkout is open.";
+
+        addEvent("Razorpay Checkout opened", "OPENED");
+    }
+
+    form.addEventListener("submit", async function (event) {
+        event.preventDefault();
+        clearError();
+
+        const amount = Number(document.getElementById("amount").value);
+        const currency = document.getElementById("currency").value;
+        const customerName = document.getElementById("customer-name").value.trim();
+        const customerEmail = document.getElementById("customer-email").value.trim();
+        const customerContact = document.getElementById("customer-contact").value.trim();
+        const description =
+            document.getElementById("description").value.trim() ||
+            "RecoveryOS Revenue Recovery Test";
+
+        if (!Number.isInteger(amount) || amount < 1) {
+            showError("Enter a valid amount of at least ₹1.");
+            return;
+        }
+
+        if (!customerName || !customerEmail || !customerContact) {
+            showError("Please complete all required customer fields.");
+            return;
+        }
+
+        createButton.disabled = true;
+        createButton.textContent = "Creating Test Order...";
+        setPill("state-pill", "Creating", "processing");
+        status.textContent = "Sending your test inputs to RecoveryOS...";
+
+        addEvent("Creating Razorpay Test Mode order", "PROCESSING");
+
+        try {
+            currentOrder = await createOrder({
+                amount,
+                currency,
+                description,
+                customer_name: customerName,
+                customer_email: customerEmail,
+                customer_contact: customerContact
+            });
+
+            document.getElementById("hero-amount").textContent =
+                "₹" + (currentOrder.amount / 100).toLocaleString("en-IN", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                });
+
+            document.getElementById("hero-meta").textContent =
+                currentOrder.currency + " · Test Mode";
+
+            document.getElementById("order-id").textContent =
+                currentOrder.order_id;
+            document.getElementById("order-amount").textContent =
+                "₹" + (currentOrder.amount / 100).toLocaleString("en-IN", {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                });
+            document.getElementById("order-customer").textContent =
+                currentOrder.customer.name;
+            document.getElementById("order-email").textContent =
+                currentOrder.customer.email;
+            document.getElementById("order-description").textContent =
+                currentOrder.description;
+
+            setPill("state-pill", "Order Created", "success");
+            setPill("order-pill", "Created", "success");
+
+            addEvent(
+                "Razorpay Test Mode order created",
+                "CREATED",
+                "success"
+            );
+
+            status.textContent = "Order created. Opening Razorpay Checkout...";
+            toast("Test Mode order created.", "success");
+
+            launchCheckout(currentOrder);
+
+        } catch (error) {
+            createButton.disabled = false;
+            createButton.textContent = "Create Test Order & Open Checkout";
+
+            setPill("state-pill", "Error", "failed");
+            status.textContent = "Order creation failed.";
+            showError(error.message || "Unable to create Test Mode order.");
+
+            addEvent("Test order creation failed", "ERROR", "error");
+            toast("Could not create the Test Mode order.", "error");
+        }
+    });
+
+    document.getElementById("reset-button").addEventListener("click", () => {
+        form.reset();
+        document.getElementById("description").value =
+            "RecoveryOS Revenue Recovery Test";
+        clearError();
+        updateAmountPreview();
+
+        currentOrder = null;
+        setPill("state-pill", "Not created", "ready");
+        setPill("order-pill", "Waiting");
+        setPill("monitor-pill", "Waiting");
+
+        document.getElementById("order-id").textContent = "Not created";
+        document.getElementById("order-amount").textContent = "—";
+        document.getElementById("order-customer").textContent = "—";
+        document.getElementById("order-email").textContent = "—";
+        document.getElementById("order-description").textContent = "—";
+
+        step("step-order", "active");
+        step("step-checkout", null);
+        step("step-webhook", null);
+        step("step-recovery", null);
+
+        status.textContent = "Enter the required fields to begin.";
+        addEvent("Test form reset", "RESET");
+    });
+
+    document.getElementById("new-session").addEventListener("click", () => {
+        window.location.reload();
+    });
+
+    updateAmountPreview();
+</script>
 
 </body>
 </html>
