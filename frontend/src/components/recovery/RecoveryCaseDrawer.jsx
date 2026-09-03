@@ -121,15 +121,27 @@ export default function RecoveryCaseDrawer({
   const atRiskMinor = d.amount_at_risk_minor ?? d.amount_at_risk ?? null;
   const recoveredMinor = d.amount_recovered_minor ?? d.amount_recovered ?? 0;
   const attempts = d.attempts ?? 0;
-  const maxAttempts = d.policy?.max_attempts ?? d.policy?.max_automated_attempts ?? d.max_attempts ?? 2;
+
+  // Keep the hard automated recovery ceiling visible even when the
+  // current policy is closed because the case has already recovered.
+  const maxAttempts = Math.max(
+    d.policy?.max_attempts ??
+    d.policy?.max_automated_attempts ??
+    d.max_attempts ??
+    2,
+    2
+  );
 
   // PAYMENT SECTION
-  const paymentObj = d.payment;
-  const paymentId = paymentObj?.payment_id || paymentObj?.id || d.payment_id || null;
+  const originalPayment = d.payment || null;
+  const recoveryPayment = d.recovery_payment || null;
+  const paymentObj = originalPayment || recoveryPayment;
+  const showingRecoveryPayment = !originalPayment && Boolean(recoveryPayment);
+  const paymentId = paymentObj?.razorpay_payment_id || paymentObj?.payment_id || paymentObj?.id || d.payment_id || null;
   const paymentStatus = paymentObj?.status || d.payment_status || null;
   const paymentMethod = paymentObj?.method || d.payment_method || null;
-  const failureReason = paymentObj?.failure_reason || d.failure_reason || d.failure_category || null;
-  const failureSource = paymentObj?.failure_source || d.failure_source || null;
+  const failureReason = paymentObj?.error_reason || paymentObj?.error_description || d.failure_reason || d.failure_category || null;
+  const failureSource = paymentObj?.error_source || d.failure_source || null;
   const errorStep = paymentObj?.error_step || d.error_step || null;
 
   // POLICY DECISION SECTION
@@ -141,28 +153,28 @@ export default function RecoveryCaseDrawer({
   const policyReason = policyObj?.reason || d.policy_reason || null;
 
   // ML ADVISORY SECTION
-  const mlObj = d.ml;
-  const mlProb = mlObj?.recovery_probability ?? d.recovery_probability ?? null;
-  const mlThreshold = mlObj?.threshold ?? d.threshold ?? null;
-  const mlRecommendation = mlObj?.recommendation || d.ml_recommendation || null;
-  const mlModelVersion = mlObj?.model_version || d.model_version || null;
-  const mlMode = mlObj?.mode || d.mode || null;
+  const mlObj = d.ml || d.latest_ml_prediction || null;
+  const mlProb = mlObj?.recovery_probability ?? mlObj?.probability ?? d.recovery_probability ?? d.probability ?? d.decision_audit?.ml_probability ?? null;
+  const mlThreshold = mlObj?.threshold ?? d.threshold ?? d.decision_audit?.ml_threshold ?? null;
+  const mlRecommendation = mlObj?.recommendation ?? d.ml_recommendation ?? d.decision_audit?.ml_recommendation ?? null;
+  const mlModelVersion = mlObj?.model_version ?? d.model_version ?? null;
+  const mlMode = mlObj?.mode ?? d.mode ?? null;
 
   // DECISION AUDIT SECTION
   const auditObj = d.decision_audit;
   const auditMlProb = auditObj?.ml_probability ?? mlProb;
   const auditMlThreshold = auditObj?.ml_threshold ?? mlThreshold;
-  const auditMlRecommendation = auditObj?.ml_recommendation || mlRecommendation;
-  const auditPolicyAction = auditObj?.policy_action || policyAction;
+  const auditMlRecommendation = auditObj?.ml_recommendation ?? mlRecommendation;
+  const auditPolicyAction = auditObj?.policy_action ?? policyAction;
   const auditAgreement = auditObj?.agreement ?? d.agreement ?? null;
 
   // RECOVERY ACTION SECTION
-  const actionObj = d.recovery_action || d.execution;
-  const recoveryActionName = actionObj?.action || d.action || null;
-  const recoveryAttempt = actionObj?.attempt ?? attempts;
-  const recoveryActionStatus = actionObj?.status || d.action_status || null;
-  const recoveryExternalId = actionObj?.external_id || actionObj?.payment_link_id || d.payment_link_id || null;
-  const recoveryPaymentLink = actionObj?.payment_link || actionObj?.payment_link_url || d.payment_link_url || null;
+  const actionObj = d.recovery_action || d.latest_action || d.execution || null;
+  const recoveryActionName = actionObj?.action_type ?? actionObj?.action ?? d.action ?? null;
+  const recoveryAttempt = actionObj?.attempt_number ?? actionObj?.attempt ?? attempts;
+  const recoveryActionStatus = actionObj?.status ?? d.action_status ?? null;
+  const recoveryExternalId = actionObj?.external_id ?? actionObj?.payment_link_id ?? d.payment_link_id ?? null;
+  const recoveryPaymentLink = actionObj?.payment_link_url ?? actionObj?.payment_link ?? d.payment_link_url ?? null;
 
   const isEligibleForAction = (policyEligible === true || statusVal === 'open') && statusVal !== 'recovered' && attempts < maxAttempts;
 
@@ -254,7 +266,7 @@ export default function RecoveryCaseDrawer({
               <div>
                 <span className="text-slate-500 block text-[11px]">Attempts</span>
                 <span className={`font-mono font-bold text-sm ${attempts >= maxAttempts ? 'text-rose-600' : 'text-slate-800'}`}>
-                  {attempts} / 2 (Max Limit: 2)
+                  {attempts} / {maxAttempts} (Max Limit: {maxAttempts})
                 </span>
               </div>
               <div>
@@ -266,80 +278,71 @@ export default function RecoveryCaseDrawer({
 
           {/* 2. PAYMENT */}
           <div className="bg-white rounded-xl p-4 border border-slate-200/80 shadow-2xs space-y-2.5">
-            <div className="flex items-center justify-between pb-1 border-b border-slate-100">
-              <div className="flex items-center gap-1.5 text-slate-900 font-bold text-xs uppercase tracking-wider">
-                <CreditCard size={14} className="text-slate-600" />
-                <span>Payment Details</span>
-              </div>
-              {!paymentObj && !paymentId && (
-                <span className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded font-medium">
-                  Not Linked
-                </span>
-              )}
+            <div className="flex items-center gap-1.5 text-slate-900 font-bold text-xs uppercase tracking-wider pb-1 border-b border-slate-100">
+              <CreditCard size={14} className="text-slate-600" />
+              <span>{showingRecoveryPayment ? 'Recovery Payment Details' : 'Payment Details'}</span>
             </div>
 
-            {!paymentObj && !paymentId ? (
-              <div className="p-3 bg-slate-50/80 rounded-lg border border-slate-200/60 text-slate-500 text-xs text-center font-medium">
-                Payment record not linked
+            <div className="space-y-2">
+              <div className="flex justify-between py-1 border-b border-slate-100">
+                <span className="text-slate-500">Razorpay Payment ID</span>
+                <span className="font-mono font-semibold text-slate-800">{renderVal(paymentId)}</span>
               </div>
-            ) : (
-              <div className="space-y-2">
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-500">Razorpay Payment ID</span>
-                  <span className="font-mono font-semibold text-slate-800">{renderVal(paymentId)}</span>
-                </div>
 
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-500">Payment Status</span>
-                  <span className="font-medium text-slate-800 capitalize">{renderVal(paymentStatus)}</span>
-                </div>
-
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-500">Payment Method</span>
-                  <span className="font-medium text-slate-800 capitalize">{renderVal(paymentMethod)}</span>
-                </div>
-
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-500">Failure Reason</span>
-                  <span className="font-medium text-slate-800">{renderVal(failureReason, getFailureCategoryLabel)}</span>
-                </div>
-
-                <div className="flex justify-between py-1 border-b border-slate-100">
-                  <span className="text-slate-500">Failure Source</span>
-                  <span className="font-mono text-slate-800">{renderVal(failureSource)}</span>
-                </div>
-
-                <div className="flex justify-between py-1">
-                  <span className="text-slate-500">Error Step</span>
-                  <span className="font-mono text-slate-800">{renderVal(errorStep)}</span>
-                </div>
+              <div className="flex justify-between py-1 border-b border-slate-100">
+                <span className="text-slate-500">Payment Status</span>
+                <span className="font-medium text-slate-800 capitalize">{renderVal(paymentStatus)}</span>
               </div>
-            )}
+
+              <div className="flex justify-between py-1 border-b border-slate-100">
+                <span className="text-slate-500">Payment Method</span>
+                <span className="font-medium text-slate-800 capitalize">{renderVal(paymentMethod)}</span>
+              </div>
+
+              <div className="flex justify-between py-1 border-b border-slate-100">
+                <span className="text-slate-500">Failure Reason</span>
+                <span className="font-medium text-slate-800">{renderVal(failureReason, getFailureCategoryLabel)}</span>
+              </div>
+
+              <div className="flex justify-between py-1 border-b border-slate-100">
+                <span className="text-slate-500">Failure Source</span>
+                <span className="font-mono text-slate-800">{renderVal(failureSource)}</span>
+              </div>
+
+              <div className="flex justify-between py-1">
+                <span className="text-slate-500">Error Step</span>
+                <span className="font-mono text-slate-800">{renderVal(errorStep)}</span>
+              </div>
+            </div>
           </div>
 
-          {/* 3. CURRENT POLICY DECISION */}
+          {/* 3. POLICY DECISION */}
           <div className="bg-white rounded-xl p-4 border border-slate-200/80 shadow-2xs space-y-2.5">
             <div className="flex items-center justify-between pb-1 border-b border-slate-100">
               <div className="flex items-center gap-1.5 text-slate-900 font-bold text-xs uppercase tracking-wider">
                 <ShieldCheck size={14} className="text-teal-600" />
-                <span>Current Deterministic Policy</span>
+                <span>{statusVal === 'recovered' ? 'Current Deterministic Policy State' : 'Deterministic Policy Decision'}</span>
               </div>
               <span className="text-[10px] font-semibold text-teal-800 bg-teal-50 px-2 py-0.5 rounded border border-teal-200">
                 Authoritative
               </span>
             </div>
 
+            {statusVal === 'recovered' && (
+              <div className="p-2.5 bg-slate-50 rounded-lg border border-slate-200 text-[11px] text-slate-600 leading-relaxed">
+                This case is already recovered, so no new automated action is currently authorized. The original approved decision is preserved below in Decision Audit & Agreement.
+              </div>
+            )}
+
             <div className="space-y-2">
               <div className="flex justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-500">Policy Status</span>
+                <span className="text-slate-500">Eligible</span>
                 <span className="font-semibold">
-                  {statusVal === 'recovered' ? (
-                    <span className="text-slate-700">No further action (Case Recovered)</span>
-                  ) : policyEligible !== null ? (
+                  {policyEligible !== null ? (
                     policyEligible ? (
-                      <span className="text-teal-700">Eligible (Approved)</span>
+                      <span className="text-teal-700">Yes (Eligible)</span>
                     ) : (
-                      <span className="text-rose-700">Blocked (Ceiling / Risk)</span>
+                      <span className="text-rose-700">No (Blocked)</span>
                     )
                   ) : renderVal(null)}
                 </span>
@@ -347,9 +350,7 @@ export default function RecoveryCaseDrawer({
 
               <div className="flex justify-between py-1 border-b border-slate-100">
                 <span className="text-slate-500">Action</span>
-                <span className="font-semibold text-slate-800">
-                  {statusVal === 'recovered' ? 'No further action' : renderVal(policyAction, getPolicyActionLabel)}
-                </span>
+                <span className="font-semibold text-slate-800">{renderVal(policyAction, getPolicyActionLabel)}</span>
               </div>
 
               <div className="flex justify-between py-1 border-b border-slate-100">
@@ -362,16 +363,18 @@ export default function RecoveryCaseDrawer({
               <div className="flex justify-between py-1 border-b border-slate-100">
                 <span className="text-slate-500">Cooldown</span>
                 <span className="font-mono text-slate-800">
-                  {policyCooldown !== null ? `${policyCooldown} mins` : renderVal(null)}
+                  {statusVal === 'recovered'
+                    ? 'Not applicable'
+                    : policyCooldown !== null
+                      ? `${policyCooldown} mins`
+                      : renderVal(null)}
                 </span>
               </div>
 
               <div className="pt-1">
                 <span className="text-slate-500 block mb-0.5">Reason:</span>
                 <p className="bg-slate-50 p-2 rounded border border-slate-200/60 leading-relaxed text-slate-700">
-                  {statusVal === 'recovered' 
-                    ? (policyReason || 'Recovery case is not open. Payment already verified.') 
-                    : (policyReason || 'Not recorded')}
+                  {policyReason || 'Not recorded'}
                 </p>
               </div>
             </div>
@@ -406,11 +409,11 @@ export default function RecoveryCaseDrawer({
 
               <div className="flex justify-between py-1 border-b border-slate-100">
                 <span className="text-slate-500">Recommendation</span>
-                <span className="font-medium text-slate-800">{renderVal(mlRecommendation, getPolicyActionLabel)}</span>
+                <span className="font-medium text-slate-800">{renderVal(mlRecommendation, (value) => typeof value === 'boolean' ? (value ? 'Recover' : 'Do not recover') : getPolicyActionLabel(value))}</span>
               </div>
 
               <div className="flex justify-between py-1 border-b border-slate-100">
-                <span className="text-slate-500">Prediction Version</span>
+                <span className="text-slate-500">Model Version</span>
                 <span className="font-mono text-slate-800">{renderVal(mlModelVersion)}</span>
               </div>
 
@@ -441,7 +444,7 @@ export default function RecoveryCaseDrawer({
 
               <div className="flex justify-between py-1 border-b border-slate-100">
                 <span className="text-slate-500">ML Recommendation</span>
-                <span className="font-medium text-slate-800">{renderVal(auditMlRecommendation, getPolicyActionLabel)}</span>
+                <span className="font-medium text-slate-800">{renderVal(auditMlRecommendation, (value) => typeof value === 'boolean' ? (value ? 'Recover' : 'Do not recover') : getPolicyActionLabel(value))}</span>
               </div>
 
               <div className="flex justify-between py-1 border-b border-slate-100">
@@ -464,15 +467,15 @@ export default function RecoveryCaseDrawer({
             </div>
           </div>
 
-          {/* 6. HISTORICAL / CURRENT RECOVERY ACTION */}
+          {/* 6. RECOVERY ACTION */}
           <div className="bg-white rounded-xl p-4 border border-slate-200/80 shadow-2xs space-y-2.5">
             <div className="flex items-center justify-between pb-1 border-b border-slate-100">
               <div className="flex items-center gap-1.5 text-slate-900 font-bold text-xs uppercase tracking-wider">
                 <Zap size={14} className="text-amber-600" />
-                <span>{statusVal === 'recovered' || recoveryActionStatus === 'executed' ? 'Historical Recovery Action' : 'Recovery Action Execution'}</span>
+                <span>Recovery Action Execution</span>
               </div>
               <span className="text-[10px] text-slate-500 font-mono">
-                {statusVal === 'recovered' ? 'Executed Previously' : 'Razorpay Test Mode'}
+                Razorpay Test Mode
               </span>
             </div>
 
@@ -484,7 +487,7 @@ export default function RecoveryCaseDrawer({
 
               <div className="flex justify-between py-1 border-b border-slate-100">
                 <span className="text-slate-500">Attempt</span>
-                <span className="font-mono text-slate-800">{recoveryAttempt !== null ? `${recoveryAttempt} of 2` : renderVal(null)}</span>
+                <span className="font-mono text-slate-800">{recoveryAttempt !== null ? `${recoveryAttempt} of ${maxAttempts}` : renderVal(null)}</span>
               </div>
 
               <div className="flex justify-between py-1 border-b border-slate-100">
@@ -579,7 +582,7 @@ export default function RecoveryCaseDrawer({
         <div className="p-4 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-3">
           <div className="text-[11px] text-slate-500">
             {isEligibleForAction ? (
-              <span className="text-teal-700 font-medium">Eligible for recovery action ({attempts}/2 attempts)</span>
+              <span className="text-teal-700 font-medium">Eligible for recovery action ({attempts}/{maxAttempts} attempts)</span>
             ) : (
               <span className="text-slate-500 font-medium">
                 {statusVal === 'recovered' ? 'Recovered successfully' : 'Disallowed or max attempts reached'}

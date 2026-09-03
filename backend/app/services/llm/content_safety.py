@@ -1,4 +1,5 @@
 import json
+import re
 
 from app.services.llm.client import (
     client,
@@ -9,11 +10,8 @@ from app.services.llm.client import (
 SAFETY_SYSTEM_PROMPT = """
 You are the RecoveryOS customer-message safety validator.
 
-Your job is to evaluate a customer-facing payment
-recovery message before it is shown to a customer.
-
-Check whether the message is appropriate for a
-payment recovery workflow.
+Your job is to evaluate a CUSTOMER-FACING payment recovery
+message before it is shown to a customer.
 
 The message must:
 
@@ -31,77 +29,161 @@ The message must:
 - Avoid exposing internal ML or system information.
 - Avoid instructing the customer to bypass security.
 
-Return ONLY valid JSON:
+Return ONLY this JSON structure:
 
-{
-    "safe": true,
-    "reason": "..."
-}
+{"safe": true, "reason": "brief reason"}
 
 or
 
-{
-    "safe": false,
-    "reason": "..."
-}
+{"safe": false, "reason": "brief reason"}
 """
+
+
+def _extract_json_object(content: str) -> dict | None:
+    """
+    Safely extract a JSON object even when the model wraps
+    it in markdown fences or adds small amounts of text.
+    """
+
+    if not content:
+        return None
+
+    cleaned = content.strip()
+
+    # First try the ideal case.
+    try:
+        result = json.loads(cleaned)
+
+        if isinstance(result, dict):
+            return result
+
+    except json.JSONDecodeError:
+        pass
+
+    # Remove common markdown code fences.
+    cleaned = re.sub(
+        r"^```(?:json)?\s*",
+        "",
+        cleaned,
+        flags=re.IGNORECASE,
+    )
+
+    cleaned = re.sub(
+        r"\s*```$",
+        "",
+        cleaned,
+    )
+
+    try:
+        result = json.loads(cleaned.strip())
+
+        if isinstance(result, dict):
+            return result
+
+    except json.JSONDecodeError:
+        pass
+
+    # Last parsing attempt:
+    # locate the first complete-looking JSON object.
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+
+    if start != -1 and end != -1 and end > start:
+
+        candidate = cleaned[start : end + 1]
+
+        try:
+            result = json.loads(candidate)
+
+            if isinstance(result, dict):
+                return result
+
+        except json.JSONDecodeError:
+            pass
+
+    return None
 
 
 def validate_customer_message(
     message: str,
 ) -> dict:
 
-    response = client.chat.completions.create(
-        model=NVIDIA_SAFETY_MODEL,
-        messages=[
-            {
-                "role": "system",
-                "content": SAFETY_SYSTEM_PROMPT,
-            },
-            {
-                "role": "user",
-                "content": json.dumps(
-                    {
-                        "message": message,
-                    }
-                ),
-            },
-        ],
-        temperature=0.0,
-        max_tokens=300,
-        extra_body={
-            "chat_template_kwargs": {
-                "enable_thinking": False,
-            },
-        },
-    )
+    if not message or not message.strip():
 
-    content = (
-        response.choices[0]
-        .message
-        .content
-    )
+        return {
+            "safe": False,
+            "reason": "Customer message is empty.",
+        }
 
     try:
 
-        result = json.loads(
-            content.strip()
+        response = client.chat.completions.create(
+            model=NVIDIA_SAFETY_MODEL,
+            messages=[
+                {
+                    "role": "system",
+                    "content": SAFETY_SYSTEM_PROMPT,
+                },
+                {
+                    "role": "user",
+                    "content": json.dumps(
+                        {
+                            "message": message,
+                        }
+                    ),
+                },
+            ],
+            temperature=0.0,
+            max_tokens=300,
+            extra_body={
+                "chat_template_kwargs": {
+                    "enable_thinking": False,
+                },
+            },
         )
 
-    except json.JSONDecodeError:
+        content = (
+            response.choices[0]
+            .message
+            .content
+            or ""
+        )
+
+    except Exception as exc:
+
+        return {
+            "safe": False,
+            "reason": (
+                "Content safety validation unavailable: "
+                f"{type(exc).__name__}."
+            ),
+        }
+
+    result = _extract_json_object(content)
+
+    if result is None:
 
         return {
             "safe": False,
             "reason": (
                 "Content safety model returned "
-                "invalid JSON."
+                "an invalid response."
             ),
         }
 
-    safe = result.get(
-        "safe",
-        False,
-    )
+    safe = result.get("safe")
+
+    # Don't allow values such as the string "false"
+    # to accidentally become truthy via bool("false").
+    if not isinstance(safe, bool):
+
+        return {
+            "safe": False,
+            "reason": (
+                "Content safety model returned "
+                "an invalid safety value."
+            ),
+        }
 
     reason = result.get(
         "reason",
@@ -109,6 +191,6 @@ def validate_customer_message(
     )
 
     return {
-        "safe": bool(safe),
+        "safe": safe,
         "reason": str(reason),
     }

@@ -240,11 +240,27 @@ def run_recovery_agent(
 
             original_message = (
                 message.content or ""
-            )
+            ).strip()
 
             # ------------------------------------------------
             # CONTENT SAFETY GATE
             # ------------------------------------------------
+            if original_message:
+
+                agent_assessment = original_message
+
+            else:
+
+                agent_assessment = (
+                    "Recovery agent completed processing "
+                    "without returning a final assessment."
+                )
+
+            customer_message = (
+                "We couldn't complete your payment. "
+                "Please use the available recovery option "
+                "to try the payment again."
+            )
 
             safety_result = (
                 make_safe_customer_message(
@@ -261,9 +277,7 @@ def run_recovery_agent(
                     "message"
                 ],
                 "agent_assessment": (
-                    original_message
-                    if safety_result["safe"]
-                    else safety_result["message"]
+                   agent_assessment
                 ),
 
                 # Keep the safety decision visible

@@ -14,9 +14,24 @@ def mark_recovery_recovered(
     if recovery_case.status == "recovered":
         return recovery_case
 
-    recovery_case.amount_recovered = amount_recovered
+    if amount_recovered <= 0:
+        return recovery_case
+
+    # Never record more recovered revenue than was at risk.
+    recovered_amount = min(
+        amount_recovered,
+        recovery_case.amount_at_risk_minor,
+    )
+
+    recovery_case.amount_recovered = (
+        recovered_amount
+    )
+
     recovery_case.status = "recovered"
-    recovery_case.updated_at = datetime.now(timezone.utc)
+
+    recovery_case.updated_at = (
+        datetime.now(timezone.utc)
+    )
 
     db.commit()
     db.refresh(recovery_case)

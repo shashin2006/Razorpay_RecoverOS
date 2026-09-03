@@ -20,7 +20,44 @@ import {
 } from 'lucide-react';
 import StatusBadge from '../common/StatusBadge.jsx';
 import { formatMinorUnitsToINR, formatPercentage } from '../../utils/currency.js';
-import { getPolicyActionLabel, getFailureCategoryLabel, normalizeCase } from '../../utils/formatting.js';
+import { getPolicyActionLabel, getFailureCategoryLabel } from '../../utils/formatting.js';
+
+// Normalize NVIDIA's final assessment to clean operator-facing text.
+// The model may return a string or a structured object; never render an
+// object directly because React would display it incorrectly.
+function cleanAgentAssessment(value) {
+  let text = value;
+
+  if (text && typeof text === 'object') {
+    const preferred =
+      text.agent_assessment ??
+      text.assessment ??
+      text.reasoning ??
+      text.message ??
+      text.content ??
+      text.response ??
+      text.text ??
+      null;
+    text = preferred ?? JSON.stringify(text, null, 2);
+  }
+
+  if (text === null || text === undefined) return '';
+  return String(text)
+    .replace(/```(?:text|markdown|md|json)?/gi, '')
+    .replace(/```/g, '')
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '')
+    .replace(/^\s*[-*+]\s+/gm, '')
+    .replace(/^\s*\d+[.)]\s+/gm, '')
+    .replace(/\*\*(.*?)\*\*/g, '$1')
+    .replace(/__(.*?)__/g, '$1')
+    .replace(/(?<!\w)\*([^*\n]+)\*(?!\w)/g, '$1')
+    .replace(/(?<!\w)_([^_\n]+)_(?!\w)/g, '$1')
+    .replace(/`([^`]+)`/g, '$1')
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
 
 export default function AgentConfirmationModal({
   recoveryCase = null,
@@ -36,31 +73,36 @@ export default function AgentConfirmationModal({
 
   if (!isOpen || !recoveryCase) return null;
 
-  // Normalize case object to ensure safe access to all top-level and nested properties
-  const c = normalizeCase(recoveryCase) || recoveryCase;
-
-  const attempts = c.attempts ?? 0;
-  const maxAttempts = c.max_attempts ?? c.policy?.max_automated_attempts ?? 2;
-  const atRisk = c.amount_at_risk_minor ?? c.amount_at_risk ?? 0;
+  // Backend detail responses wrap the authoritative case under `case`.
+  // Normalize both list-style and detail-style payloads here so the modal
+  // never displays stale/optimistic attempts or status.
+  const backendCase = recoveryCase.case || recoveryCase;
+  const latestAction = recoveryCase.latest_action || recoveryCase.recovery_action || null;
+  const attempts = backendCase.attempts ?? recoveryCase.attempts ?? 0;
+  const maxAttempts = recoveryCase.policy?.max_attempts ?? recoveryCase.max_attempts ?? recoveryCase.policy?.max_automated_attempts ?? 2;
+  const atRisk = backendCase.amount_at_risk_minor ?? recoveryCase.amount_at_risk_minor ?? recoveryCase.amount_at_risk ?? 0;
   const failureLabel = getFailureCategoryLabel(
-    c.failure_category || 
-    c.payment?.failure_reason || 
+    backendCase.failure_category || 
+    recoveryCase.failure_category || 
+    recoveryCase.payment?.failure_reason || 
     'payment_failed'
   );
 
-  const actionKey = c.policy?.recommended_action || 
-    c.policy?.action || 
-    c.action || 
+  const actionKey = recoveryCase.policy?.recommended_action || 
+    recoveryCase.policy?.action || 
+    recoveryCase.action || 
     'payment_link';
   const actionLabel = getPolicyActionLabel(actionKey);
 
-  // 1. RECOVERY ASSESSMENT (Backend-backed textual reasoning or deterministic fallback)
+  // 1. AGENT ASSESSMENT DETERMINATION (Strictly backend-backed or deterministic)
   const textualAgentReasoning = (
-    c.agent_assessment || 
-    c.agent?.agent_reasoning || 
-    c.agent_reasoning || 
-    c.agent?.reasoning || 
-    c.assessment || 
+    executionResult?.agent_assessment ||
+    executionResult?.original_message ||
+    recoveryCase.agent?.agent_reasoning || 
+    recoveryCase.agent_reasoning || 
+    recoveryCase.agent?.reasoning || 
+    recoveryCase.agent_assessment || 
+    recoveryCase.assessment || 
     null
   );
 
@@ -70,76 +112,68 @@ export default function AgentConfirmationModal({
     textualAgentReasoning.trim().length > 0
   );
 
-  const assessmentTitle = hasTextualAgentResponse ? 'AGENT ASSESSMENT' : 'RECOVERY ASSESSMENT';
-  const assessmentSourceLabel = hasTextualAgentResponse ? 'Source: Recovery Agent' : 'Source: Prediction + Policy';
-  const assessmentContent = hasTextualAgentResponse 
-    ? textualAgentReasoning 
-    : 'Assessment summary is based on the recorded recovery prediction and deterministic policy.';
+  // If no textual agent response exists in backend, use a concise deterministic summary
+  const deterministicAssessment = `${failureLabel} decline appears potentially recoverable through ${actionLabel.toLowerCase()}.`;
+  const assessmentTitle = hasTextualAgentResponse ? 'Agent Assessment' : 'Recovery assessment';
+  const assessmentContent = hasTextualAgentResponse ? textualAgentReasoning : deterministicAssessment;
 
-  // 2. ML ADVISORY DATA (Advisory prediction values only)
-  const mlObj = c.ml || c.latest_ml_prediction || {};
-  const mlProb = mlObj.recovery_probability ?? c.recovery_probability ?? null;
-  const mlRec = mlObj.recommendation || c.ml_recommendation || null;
-  const mlMode = mlObj.mode || c.mode || null;
+  // 2. LLM PREDICTION DATA
+  const mlObj = recoveryCase.ml || {};
+  const mlProb = mlObj.recovery_probability ?? recoveryCase.recovery_probability ?? null;
+  const mlRec = mlObj.recommendation || recoveryCase.ml_recommendation || (mlProb && mlProb >= 0.5 ? 'Recover' : 'Monitor');
+  const mlMode = mlObj.mode || recoveryCase.mode || 'Shadow';
 
-  // 3. DETERMINISTIC POLICY DATA
-  const policyObj = c.policy || {};
-  const isPolicyEligible = policyObj.eligible ?? c.is_eligible ?? (attempts < maxAttempts);
+  // 3. POLICY DECISION DATA
+  const policyObj = recoveryCase.policy || {};
+  const isPolicyEligible = policyObj.eligible ?? recoveryCase.is_eligible ?? (attempts < maxAttempts);
   const policyDecisionText = policyObj.decision || (isPolicyEligible ? 'Policy Approved' : 'Policy Blocked');
-  const policyReason = policyObj.reason || c.policy_reason || (isPolicyEligible ? `Safety checks passed: ${attempts}/${maxAttempts} attempts utilized.` : 'Maximum automated recovery attempts reached or risk threshold exceeded.');
-  const cooldownPeriod = policyObj.cooldown_period_minutes ?? policyObj.cooldown ?? c.cooldown ?? 30;
+  const cooldownPeriod = policyObj.cooldown_period_minutes ?? policyObj.cooldown ?? recoveryCase.cooldown ?? null;
 
   // 4. EXECUTION OUTCOME DATA EXTRACTION (when executed)
+  // The agent endpoint returns execution details inside tool_calls. The
+  // case-detail endpoint separately returns latest_action. Read both.
+  const toolCalls = Array.isArray(executionResult?.tool_calls)
+    ? executionResult.tool_calls
+    : [];
+  const executionToolResult = [...toolCalls]
+    .reverse()
+    .find((call) => call?.tool === 'execute_bounded_recovery')?.result || null;
+
   const resultStatus = executionResult?.status || 
+    executionToolResult?.status ||
+    latestAction?.status ||
     executionResult?.recovery_action?.status || 
+    executionResult?.action_status ||
     'executed';
     
   const resultAction = executionResult?.action || 
+    executionToolResult?.action ||
+    latestAction?.action_type ||
     executionResult?.recovery_action?.action || 
-    c.latest_action?.action ||
-    c.policy?.recommended_action ||
-    c.policy?.action ||
-    actionLabel;
+    executionResult?.action_type ||
+    actionKey;
     
   const resultExternalId = executionResult?.external_id || 
+    executionToolResult?.external_id ||
+    latestAction?.external_id ||
     executionResult?.recovery_action?.external_id || 
     executionResult?.payment_link_id || 
-    c.latest_action?.external_id ||
-    c.latest_action?.payment_link_id ||
-    c.payment_link_id ||
     null;
     
   const resultPaymentLink = executionResult?.payment_link_url || 
+    executionToolResult?.payment_link_url ||
+    latestAction?.payment_link_url ||
     executionResult?.payment_link || 
     executionResult?.recovery_action?.payment_link_url || 
     executionResult?.recovery_action?.payment_link || 
-    c.latest_action?.payment_link_url ||
-    c.latest_action?.payment_link ||
-    c.recovery_action?.payment_link_url ||
-    c.recovery_action?.payment_link ||
-    c.payment_link_url ||
-    c.payment?.payment_link ||
     null;
 
-  const resultAttempts = executionResult?.attempts ?? 
-    executionResult?.case?.attempts ?? 
-    c.attempts ?? 
+  const resultCaseStatus = executionResult?.case?.status || backendCase.status || recoveryCase.status;
+  const resultAttempts = executionResult?.case?.attempts ??
+    backendCase.attempts ??
+    latestAction?.attempt_number ??
+    executionResult?.attempts ??
     attempts;
-
-  const isSafetyFallbackUsed = executionResult?.content_safety?.fallback_used === true;
-
-  const executionAgentAssessment = (
-    executionResult?.agent_assessment ||
-    executionResult?.case?.agent_assessment ||
-    c.agent_assessment ||
-    null
-  );
-
-  const hasExecutionAgentAssessment = Boolean(
-    executionAgentAssessment &&
-    typeof executionAgentAssessment === 'string' &&
-    executionAgentAssessment.trim().length > 0
-  );
 
   const handleCopyLink = () => {
     if (!resultPaymentLink) return;
@@ -173,7 +207,7 @@ export default function AgentConfirmationModal({
                 {executionResult ? 'Recovery Action Result' : 'Run Recovery Agent'}
               </h3>
               <p className="text-[11px] text-slate-500 font-mono mt-1">
-                {c.case_code || (c.id ? `Case #${c.id}` : 'Case Inspection')}
+                {recoveryCase.case_code || (recoveryCase.id ? `Case #${recoveryCase.id}` : 'Case Inspection')}
               </p>
             </div>
           </div>
@@ -203,7 +237,7 @@ export default function AgentConfirmationModal({
             </div>
             <div className="text-right">
               <span className="text-[10px] text-slate-500 uppercase tracking-wider block font-semibold">Current State</span>
-              <StatusBadge status={c.status} size="xs" />
+              <StatusBadge status={backendCase.status || recoveryCase.status} size="xs" />
             </div>
           </div>
 
@@ -227,119 +261,115 @@ export default function AgentConfirmationModal({
           {/* STATE 2: SUCCESS OUTCOME TELEMETRY */}
           {executionResult && (
             <div className="space-y-3 animate-in fade-in duration-150">
-              <div className="p-3.5 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-900 flex items-start gap-2.5">
-                <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+              {hasTextualAgentResponse && (
+                <div className="p-3.5 rounded-lg bg-indigo-50/70 border border-indigo-100 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-indigo-950 uppercase tracking-wider text-[10px] flex items-center gap-1.5">
+                      <Bot size={13} className="text-indigo-600" />
+                      <span>Agent Assessment</span>
+                    </span>
+                    <span className="text-[10px] text-indigo-600 font-mono">NVIDIA Recovery Agent</span>
+                  </div>
+                  <p className="text-indigo-900 text-xs leading-relaxed font-normal whitespace-pre-wrap">
+                    {textualAgentReasoning}
+                  </p>
+                </div>
+              )}
+              <div className={`p-3.5 rounded-lg border flex items-start gap-2.5 ${
+                resultCaseStatus === 'recovered'
+                  ? 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                  : 'bg-indigo-50 border-indigo-200 text-indigo-900'
+              }`}>
+                {resultCaseStatus === 'recovered' ? (
+                  <CheckCircle2 size={16} className="text-emerald-600 shrink-0 mt-0.5" />
+                ) : (
+                  <Zap size={16} className="text-indigo-600 shrink-0 mt-0.5" />
+                )}
                 <div>
-                  <p className="font-bold text-emerald-950">Recovery Action Executed</p>
-                  <p className="text-emerald-800 text-[11px] mt-0.5">
-                    Backend policy approved and recorded the recovery action in Razorpay Test Mode.
+                  <p className="font-bold">
+                    {resultCaseStatus === 'recovered'
+                      ? 'Revenue Recovered'
+                      : 'Recovery Action Executed'}
+                  </p>
+                  <p className="text-[11px] mt-0.5 leading-relaxed">
+                    {resultCaseStatus === 'recovered'
+                      ? 'Razorpay confirmed the payment and RecoveryOS recorded the recovered amount.'
+                      : 'Policy approved and recorded the action in Razorpay Test Mode. Payment recovery remains pending until Razorpay confirms payment.'}
                   </p>
                 </div>
               </div>
 
-              {/* 1. AGENT ASSESSMENT */}
-              <div className="p-3.5 rounded-lg bg-indigo-50/70 border border-indigo-100 space-y-1.5 animate-in fade-in">
-                <div className="flex items-center justify-between">
-                  <span className="font-bold text-indigo-950 uppercase tracking-wider text-[10px] flex items-center gap-1.5">
-                    <Bot size={13} className="text-indigo-600" />
-                    <span>AGENT ASSESSMENT</span>
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    {isSafetyFallbackUsed && (
-                      <span className="text-[10px] text-amber-700 bg-amber-100/70 border border-amber-200 px-1.5 py-0.2 rounded font-medium">
-                        Safety fallback applied
-                      </span>
-                    )}
-                    <span className="text-[10px] text-indigo-600 font-mono">
-                      Source: Recovery Agent
-                    </span>
-                  </div>
-                </div>
-                <p className="text-indigo-900 text-xs leading-relaxed font-normal">
-                  {hasExecutionAgentAssessment 
-                    ? executionAgentAssessment 
-                    : 'Assessment summary unavailable.'}
-                </p>
-              </div>
-
-              {/* 2-6. POLICY DECISION, ACTION, EXECUTION, ATTEMPTS & PAYMENT LINK */}
-              <div className="bg-slate-50 rounded-lg p-3.5 border border-slate-200/80 space-y-2.5 font-medium">
-                {/* 2. Policy Decision */}
+              {/* Action Telemetry Card */}
+              <div className="bg-slate-50 rounded-lg p-3.5 border border-slate-200/80 space-y-2 font-medium">
                 <div className="flex items-center justify-between text-slate-600">
-                  <span className="text-slate-500">Policy Decision</span>
-                  <span className="font-semibold text-teal-700 bg-teal-50 px-2 py-0.5 rounded border border-teal-200 text-xs flex items-center gap-1">
-                    <ShieldCheck size={12} />
-                    <span>{isPolicyEligible ? 'ELIGIBLE' : 'BLOCKED'}</span>
-                  </span>
-                </div>
-
-                {/* 3. Approved Action */}
-                <div className="flex items-center justify-between text-slate-600">
-                  <span className="text-slate-500">Approved Action</span>
-                  <span className="text-slate-900 font-semibold">{getPolicyActionLabel(resultAction)}</span>
-                </div>
-
-                {/* 4. Execution Status */}
-                <div className="flex items-center justify-between text-slate-600">
-                  <span className="text-slate-500">Execution Status</span>
+                  <span className="text-slate-500">Action Status</span>
                   <StatusBadge status={resultStatus} size="xs" />
                 </div>
 
-                {/* 5. Attempt */}
                 <div className="flex items-center justify-between text-slate-600">
-                  <span className="text-slate-500">Attempt</span>
-                  <span className="font-mono text-indigo-700 font-semibold">
-                    {resultAttempts} / {maxAttempts}
+                  <span className="text-slate-500">Action Type</span>
+                  <span className="text-slate-900 font-semibold">{getPolicyActionLabel(resultAction)}</span>
+                </div>
+
+                <div className="flex items-center justify-between text-slate-600">
+                  <span className="text-slate-500">External ID</span>
+                  <span className="font-mono text-slate-900 font-bold">
+                    {resultExternalId || <span className="text-slate-400 font-normal">Not recorded</span>}
                   </span>
                 </div>
 
-                {/* External ID if available */}
-                {resultExternalId && (
-                  <div className="flex items-center justify-between text-slate-600">
-                    <span className="text-slate-500">External ID</span>
-                    <span className="font-mono text-slate-900 font-semibold text-[11px]">
-                      {resultExternalId}
-                    </span>
-                  </div>
-                )}
+                <div className="flex items-center justify-between text-slate-600">
+                  <span className="text-slate-500">Automated Attempts</span>
+                  <span className="font-mono text-indigo-700 font-semibold">
+                    {resultAttempts} of {maxAttempts}
+                  </span>
+                </div>
 
-                {/* 6. Payment Link */}
-                <div className="pt-2 border-t border-slate-200/60 space-y-1.5">
-                  <span className="text-slate-500 block text-[11px]">Payment Link:</span>
-                  {resultPaymentLink ? (
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-1.5 bg-white p-2 rounded border border-slate-200 font-mono text-[11px]">
-                        <span className="truncate flex-1 text-slate-800">{resultPaymentLink}</span>
-                        <button
-                          onClick={handleCopyLink}
-                          className="p-1 rounded hover:bg-slate-100 text-slate-600 transition-colors cursor-pointer"
-                          title="Copy payment link"
-                        >
-                          {copiedLink ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
-                        </button>
-                      </div>
+                <div className="flex items-center justify-between text-slate-600">
+                  <span className="text-slate-500">Recovery Outcome</span>
+                  <span className={`font-semibold ${
+                    resultCaseStatus === 'recovered'
+                      ? 'text-emerald-700'
+                      : 'text-amber-700'
+                  }`}>
+                    {resultCaseStatus === 'recovered'
+                      ? 'Payment confirmed'
+                      : 'Awaiting payment'}
+                  </span>
+                </div>
+
+                {resultPaymentLink && (
+                  <div className="pt-2 border-t border-slate-200/60 space-y-1">
+                    <span className="text-slate-500 block text-[11px]">Razorpay Payment Link:</span>
+                    <div className="flex items-center gap-1.5 bg-white p-2 rounded border border-slate-200 font-mono text-[11px]">
+                      <span className="truncate flex-1 text-slate-800">{resultPaymentLink}</span>
+                      <button
+                        onClick={handleCopyLink}
+                        className="p-1 rounded hover:bg-slate-100 text-slate-600 transition-colors cursor-pointer"
+                        title="Copy payment link"
+                      >
+                        {copiedLink ? <Check size={13} className="text-emerald-600" /> : <Copy size={13} />}
+                      </button>
                       <a
                         href={resultPaymentLink}
                         target="_blank"
                         rel="noreferrer"
-                        className="inline-flex items-center justify-center gap-1.5 w-full px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded font-semibold text-xs transition-colors cursor-pointer"
+                        className="p-1 rounded hover:bg-slate-100 text-indigo-600 transition-colors cursor-pointer"
+                        title="Open payment link in new tab"
                       >
-                        <span>Open Payment Link</span>
                         <ExternalLink size={13} />
                       </a>
                     </div>
-                  ) : (
-                    <span className="text-slate-400 font-mono text-xs">Not generated</span>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
 
-          {/* STATE 3: PRE-EXECUTION / DEFAULT PARAMETERS (1. ASSESSMENT, 2. ML ADVISORY, 3. POLICY DECISION, 4. SAFETY BOUNDARY, 5. PIPELINE) */}
+          {/* STATE 3: PRE-EXECUTION / DEFAULT PARAMETERS (1. AGENT ASSESSMENT, 2. LLM PREDICTION, 3. POLICY DECISION, 4. SAFETY BOUNDARY, 5. PIPELINE) */}
           {!executionResult && (
             <>
-              {/* 1. RECOVERY ASSESSMENT */}
+              {/* 1. AGENT ASSESSMENT */}
               <div className="p-3.5 rounded-lg bg-indigo-50/70 border border-indigo-100 space-y-1">
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-indigo-950 uppercase tracking-wider text-[10px] flex items-center gap-1.5">
@@ -347,7 +377,7 @@ export default function AgentConfirmationModal({
                     <span>{assessmentTitle}</span>
                   </span>
                   <span className="text-[10px] text-indigo-600 font-mono">
-                    {assessmentSourceLabel}
+                    {hasTextualAgentResponse ? 'Advisory Signal' : 'Deterministic'}
                   </span>
                 </div>
                 <p className="text-indigo-900 text-xs leading-relaxed font-normal">
@@ -355,12 +385,12 @@ export default function AgentConfirmationModal({
                 </p>
               </div>
 
-              {/* 2. ML ADVISORY */}
+              {/* 2. LLM PREDICTION */}
               <div className="bg-white rounded-lg p-3.5 border border-slate-200/80 shadow-2xs space-y-2">
                 <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
                   <span className="font-bold text-slate-900 uppercase tracking-wider text-[10px] flex items-center gap-1.5">
                     <Sparkles size={13} className="text-indigo-600" />
-                    <span>ML Advisory</span>
+                    <span>LLM Prediction</span>
                   </span>
                   <span className="text-[10px] text-slate-400 font-mono">Non-Authoritative</span>
                 </div>
@@ -389,12 +419,12 @@ export default function AgentConfirmationModal({
                 </div>
               </div>
 
-              {/* 3. DETERMINISTIC POLICY */}
+              {/* 3. POLICY DECISION */}
               <div className="bg-white rounded-lg p-3.5 border border-slate-200/80 shadow-2xs space-y-2 font-medium">
                 <div className="flex items-center justify-between pb-1.5 border-b border-slate-100">
                   <span className="font-bold text-slate-900 uppercase tracking-wider text-[10px] flex items-center gap-1.5">
                     <ShieldCheck size={13} className="text-teal-600" />
-                    <span>Deterministic Policy</span>
+                    <span>Policy Decision</span>
                   </span>
                   <span className="text-[10px] font-semibold text-teal-800 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200">
                     Authoritative
@@ -403,7 +433,7 @@ export default function AgentConfirmationModal({
 
                 <div className="space-y-1.5 pt-0.5 text-[11px]">
                   <div className="flex items-center justify-between text-slate-600">
-                    <span className="text-slate-500">Policy Status</span>
+                    <span className="text-slate-500">Policy status</span>
                     <span className={`font-semibold flex items-center gap-1 ${isPolicyEligible ? 'text-teal-700' : 'text-rose-600'}`}>
                       <ShieldCheck size={12} />
                       <span>{policyDecisionText}</span>
@@ -411,27 +441,20 @@ export default function AgentConfirmationModal({
                   </div>
 
                   <div className="flex items-center justify-between text-slate-600">
-                    <span className="text-slate-500">Action</span>
+                    <span className="text-slate-500">Requested action</span>
                     <span className="text-slate-900 font-semibold">{actionLabel}</span>
                   </div>
 
                   <div className="flex items-center justify-between text-slate-600">
-                    <span className="text-slate-500">Maximum Attempts</span>
+                    <span className="text-slate-500">Automated attempts</span>
                     <span className="font-mono text-slate-800">
-                      {maxAttempts}
+                      {attempts} / {maxAttempts} attempts
                     </span>
                   </div>
 
                   <div className="flex items-center justify-between text-slate-600">
                     <span className="text-slate-500">Cooldown</span>
-                    <span className="font-mono text-slate-800">{cooldownPeriod} mins</span>
-                  </div>
-
-                  <div className="pt-1 border-t border-slate-100">
-                    <span className="text-slate-500 block text-[10px] mb-0.5">Reason:</span>
-                    <p className="text-slate-700 bg-slate-50 p-2 rounded border border-slate-100 text-[11px] leading-relaxed">
-                      {policyReason}
-                    </p>
+                    <span className="font-mono text-slate-800">{cooldownPeriod !== null ? `${cooldownPeriod} minute cooldown` : 'Not recorded'}</span>
                   </div>
                 </div>
               </div>
@@ -440,14 +463,9 @@ export default function AgentConfirmationModal({
               <div className="p-3 rounded-lg bg-amber-50/80 border border-amber-200/80 text-amber-950 flex items-start gap-2.5">
                 <Lock size={15} className="text-amber-700 shrink-0 mt-0.5" />
                 <div className="leading-snug">
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-bold text-amber-950 text-xs">2-Attempt Hard Ceiling</p>
-                    <span className="font-mono text-[11px] font-bold text-amber-900 bg-amber-100/70 px-1.5 py-0.5 rounded">
-                      {attempts} / 2
-                    </span>
-                  </div>
-                  <p className="text-amber-800 text-[11px] mt-1 font-medium">
-                    Automated recovery is limited to two attempts per case.
+                  <p className="font-bold text-amber-950 text-xs">2-Attempt Hard Ceiling</p>
+                  <p className="text-amber-800 text-[11px] mt-0.5 font-medium">
+                    Automated recovery is limited to 2 attempts per case.
                   </p>
                 </div>
               </div>
@@ -456,7 +474,7 @@ export default function AgentConfirmationModal({
               <div className="p-3 rounded-lg bg-slate-50 border border-slate-200/80 space-y-2">
                 <div className="flex items-center justify-between">
                   <span className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold">Execution Pipeline</span>
-                  <span className="text-[10px] text-indigo-700 font-semibold italic">ML recommends. Policy decides.</span>
+                  <span className="text-[10px] text-indigo-700 font-semibold">ML recommends. Policy decides.</span>
                 </div>
 
                 <div className="flex items-center justify-between text-[11px] font-mono text-slate-700 py-1 px-1">
@@ -499,7 +517,9 @@ export default function AgentConfirmationModal({
                 <button
                   onClick={() => {
                     onClose();
-                    onViewDetails(c);
+                    // The drawer expects the case record itself (with `id`),
+                    // not the wrapped GET /cases/{id} detail response.
+                    onViewDetails(backendCase);
                   }}
                   className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm transition-all cursor-pointer"
                 >

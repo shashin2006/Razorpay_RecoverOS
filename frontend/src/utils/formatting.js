@@ -93,6 +93,7 @@ export function normalizeCase(raw) {
   }
 
   const payment = raw.payment || innerCase.payment || null;
+  const recoveryPayment = raw.recovery_payment || innerCase.recovery_payment || null;
   const policy = raw.policy || innerCase.policy || {};
   const ml = raw.latest_ml_prediction || raw.ml || innerCase.ml || innerCase.latest_ml_prediction || {};
   const latestAction = raw.latest_action || raw.recovery_action || innerCase.recovery_action || innerCase.latest_action || null;
@@ -121,6 +122,7 @@ export function normalizeCase(raw) {
     failure_category: failureCategory,
     payment_id: paymentId,
     payment,
+    recovery_payment: recoveryPayment,
     policy,
     ml,
     latest_ml_prediction: ml,

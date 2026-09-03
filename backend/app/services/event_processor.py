@@ -14,6 +14,7 @@ from app.services.ml_outcome_service import (
     record_recovery_outcome,
 )
 
+
 PAYMENT_EVENTS = {
     "payment.authorized",
     "payment.failed",
@@ -216,7 +217,7 @@ def process_webhook_event(
                 payment=payment,
                 payment_data=payment_data,
             )
-            
+        
         if event_type == "payment.captured":
             process_payment_recovery(
                 db=db,
