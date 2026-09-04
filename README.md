@@ -471,6 +471,25 @@ The system tracks:
 This makes the recovery workflow measurable across a batch rather than
 presenting only an AI-generated recommendation.
 
+
+### Recommended buildathon evaluation dataset
+
+For the ML monitoring dashboard, the useful unit is a **verified outcome**, not merely a generated Payment Link.
+
+A demonstration dataset should contain both outcome classes:
+
+```text
+Example target:
+15 verified recovery outcomes
+
+7  recovered      ✅
+8  unrecovered    ❌
+```
+
+This gives the evaluator both positive and negative classes for metrics such as ROC-AUC, precision, recall, F1, and accuracy.
+
+> The numbers above are a target dataset shape for demonstration, not claimed model results.
+
 ------------------------------------------------------------------------
 
 # 13. Audit Trail
@@ -953,7 +972,39 @@ The primary demonstration uses Razorpay Test Mode.
 
 ------------------------------------------------------------------------
 
-# 25. Buildathon Alignment
+# 25. Verified End-to-End Evidence
+
+A real Razorpay Test Mode recovery has been completed through the complete
+workflow:
+
+```text
+Failed Razorpay payment
+        ↓
+Recovery Case
+        ↓
+ML prediction
+        ↓
+Policy-approved recovery
+        ↓
+Real Razorpay Test Mode Payment Link
+        ↓
+Customer payment
+        ↓
+payment.captured webhook
+        ↓
+Recovery Case marked recovered
+        ↓
+ML outcome recorded
+```
+
+The verified scenario recovered **₹500** through an actual Test Mode payment
+rather than a simulated database-only status change.
+
+This is the primary proof point for the buildathon demonstration.
+
+---
+
+# 26. Buildathon Alignment
 
 RecoveryOS directly addresses the revenue recovery workflow:
 
@@ -979,7 +1030,7 @@ deterministic, bounded, and observable.**
 
 ------------------------------------------------------------------------
 
-# 26. What Makes RecoveryOS Different
+# 27. What Makes RecoveryOS Different
 
 RecoveryOS is not simply:
 
@@ -1005,7 +1056,7 @@ That separation is the core architectural idea behind the project.
 
 ------------------------------------------------------------------------
 
-# 27. Security & Safety Notes
+# 28. Security & Safety Notes
 
 This project is intended for demonstration using Razorpay Test Mode.
 
@@ -1018,9 +1069,18 @@ observability.
 No production payment credentials should be committed to this
 repository.
 
+
+The current prototype also distinguishes between **action execution** and
+**confirmed recovery**: creating a Payment Link is not counted as recovered
+revenue until Razorpay confirms the resulting payment.
+
+The recovery policy defines a 30-minute cooldown for bank-decline recovery.
+Runtime elapsed-time enforcement should be completed before describing that
+cooldown as an enforced production control.
+
 ------------------------------------------------------------------------
 
-# 28. Project Status
+# 29. Project Status
 
 **Working prototype / buildathon submission**
 
@@ -1046,7 +1106,7 @@ Implemented:
 
 ------------------------------------------------------------------------
 
-# 29. Official Resources
+# 30. Official Resources
 
 -   [Razorpay](https://razorpay.com/)
 -   [Razorpay Documentation](https://razorpay.com/docs/)
@@ -1055,13 +1115,43 @@ Implemented:
 
 ------------------------------------------------------------------------
 
-# 30. Author
+# 31. Author
 
 **Shashin**
 
 Built for the Razorpay AI Buildathon.
 
 ------------------------------------------------------------------------
+
+## Buildathon Demo Notes
+
+For a clean five-minute demonstration, emphasize this sequence:
+
+```text
+Failed payment
+    ↓
+ML prediction
+    ↓
+NVIDIA agent reasoning
+    ↓
+Deterministic policy
+    ↓
+Razorpay Payment Link
+    ↓
+Customer payment
+    ↓
+Webhook confirmation
+    ↓
+Recovered revenue
+    ↓
+Audit + ML outcome
+```
+
+The strongest product claim is not that the agent is fully autonomous.
+It is that the agent can participate in a financial workflow while execution
+remains **bounded, policy-controlled, externally confirmed, and auditable**.
+
+---
 
 ## Final Message
 

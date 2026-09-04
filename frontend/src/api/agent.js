@@ -15,7 +15,7 @@ export async function triggerAgentRecovery(recoveryCaseId) {
 
   const response = await apiClient(`/api/agent/recovery/${recoveryCaseId}`, {
     method: 'POST',
-    timeout: 30000,
+    timeout: 120000,
   });
 
   return response;

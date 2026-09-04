@@ -38,22 +38,35 @@ function cleanAgentAssessment(value) {
       text.response ??
       text.text ??
       null;
-    text = preferred ?? JSON.stringify(text, null, 2);
+
+    text = preferred ?? '';
   }
 
   if (text === null || text === undefined) return '';
+
   return String(text)
-    .replace(/```(?:text|markdown|md|json)?/gi, '')
+    // Remove fenced markdown/code wrappers.
+    .replace(/```(?:text|markdown|md|json|javascript|js)?/gi, '')
     .replace(/```/g, '')
+    // Remove markdown headings, bullets, numbered-list prefixes and blockquotes.
     .replace(/^\s{0,3}#{1,6}\s+/gm, '')
     .replace(/^\s*[-*+]\s+/gm, '')
     .replace(/^\s*\d+[.)]\s+/gm, '')
-    .replace(/\*\*(.*?)\*\*/g, '$1')
-    .replace(/__(.*?)__/g, '$1')
+    .replace(/^\s*>\s?/gm, '')
+    // Remove markdown emphasis without touching normal punctuation.
+    .replace(/\*\*(.*?)\*\*/gs, '$1')
+    .replace(/__(.*?)__/gs, '$1')
     .replace(/(?<!\w)\*([^*\n]+)\*(?!\w)/g, '$1')
     .replace(/(?<!\w)_([^_\n]+)_(?!\w)/g, '$1')
     .replace(/`([^`]+)`/g, '$1')
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '$1')
+    // Remove accidental code-comment markers that sometimes appear in model output.
+    .replace(/^\s*\/\*+\s*$/gm, '')
+    .replace(/^\s*\*+\/\s*$/gm, '')
+    .replace(/^\s*\/\/\s?/gm, '')
+    // Remove lines containing only decorative punctuation.
+    .replace(/^\s*[*/_#`~|]+\s*$/gm, '')
+    // Normalize whitespace after cleanup.
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
@@ -106,16 +119,16 @@ export default function AgentConfirmationModal({
     null
   );
 
-  const hasTextualAgentResponse = Boolean(
-    textualAgentReasoning && 
-    typeof textualAgentReasoning === 'string' && 
-    textualAgentReasoning.trim().length > 0
-  );
+  // Always sanitize the model-backed assessment before rendering it.
+  // This handles both plain strings and structured model responses.
+  const cleanedAgentReasoning = cleanAgentAssessment(textualAgentReasoning);
 
-  // If no textual agent response exists in backend, use a concise deterministic summary
+  const hasTextualAgentResponse = cleanedAgentReasoning.length > 0;
+
+  // If no textual agent response exists in backend, use a concise deterministic summary.
   const deterministicAssessment = `${failureLabel} decline appears potentially recoverable through ${actionLabel.toLowerCase()}.`;
   const assessmentTitle = hasTextualAgentResponse ? 'Agent Assessment' : 'Recovery assessment';
-  const assessmentContent = hasTextualAgentResponse ? textualAgentReasoning : deterministicAssessment;
+  const assessmentContent = hasTextualAgentResponse ? cleanedAgentReasoning : deterministicAssessment;
 
   // 2. LLM PREDICTION DATA
   const mlObj = recoveryCase.ml || {};
@@ -271,7 +284,7 @@ export default function AgentConfirmationModal({
                     <span className="text-[10px] text-indigo-600 font-mono">NVIDIA Recovery Agent</span>
                   </div>
                   <p className="text-indigo-900 text-xs leading-relaxed font-normal whitespace-pre-wrap">
-                    {textualAgentReasoning}
+                    {cleanedAgentReasoning}
                   </p>
                 </div>
               )}
