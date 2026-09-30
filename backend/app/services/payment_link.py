@@ -32,7 +32,7 @@ def create_recovery_payment_link(
             "http://localhost:3000/recovery/success"
             "?session_id={CHECKOUT_SESSION_ID}"
         ),
-        cancel_url="http://localhost:3000/recovery/cancel",
+        cancel_url="http://localhost:3000/?recovery=cancel",
     )
 
     return {
