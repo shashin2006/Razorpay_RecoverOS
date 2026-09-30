@@ -1,4 +1,9 @@
-from app.services.razorpay_client import client
+import stripe
+
+from app.core.config import settings
+
+
+stripe.api_key = settings.stripe_secret_key
 
 
 def create_recovery_payment_link(
@@ -7,23 +12,30 @@ def create_recovery_payment_link(
     description: str,
     recovery_case_id: int,
 ):
-
-    reference_id = f"recovery_case_{recovery_case_id}"
-
-    payment_link = client.payment_link.create(
-        {
-            "amount": amount_minor,
-            "currency": currency,
-            "description": description,
-            "reference_id": reference_id,
-            "notes": {
-                "recovery_case_id": str(recovery_case_id),
-            },
-            "reminder_enable": True,
-        }
+    session = stripe.checkout.Session.create(
+        mode="payment",
+        line_items=[
+            {
+                "price_data": {
+                    "currency": currency.lower(),
+                    "product_data": {"name": description},
+                    "unit_amount": amount_minor,
+                },
+                "quantity": 1,
+            }
+        ],
+        metadata={
+            "recovery_case_id": str(recovery_case_id),
+            "recoveryos": "true",
+        },
+        success_url=(
+            "http://localhost:3000/recovery/success"
+            "?session_id={CHECKOUT_SESSION_ID}"
+        ),
+        cancel_url="http://localhost:3000/recovery/cancel",
     )
 
-    print("DEBUG PAYMENT LINK RESPONSE:")
-    print(payment_link)
-
-    return payment_link
+    return {
+        "id": session.id,
+        "short_url": session.url,
+    }
