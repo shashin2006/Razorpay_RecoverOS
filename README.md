@@ -4,7 +4,7 @@
 
 **RecoveryOS** detects failed payments, identifies revenue at risk,
 predicts recovery potential, and executes a bounded recovery workflow
-through **Razorpay Test Mode** --- with an NVIDIA-powered agent
+through **Stripe Test Mode** --- with an NVIDIA-powered agent
 providing reasoning while deterministic policy controls remain
 authoritative.
 
@@ -33,15 +33,15 @@ treating payment recovery as a manual follow-up process.
 
 RecoveryOS is designed for the **AI Revenue Recovery** problem:
 
--   Detect failed payments from Razorpay webhooks
+-   Detect failed payments from Stripe webhooks
 -   Classify the payment failure
 -   Create a recovery case for eligible revenue at risk
 -   Predict recovery probability using ML
 -   Use an NVIDIA-powered agent to reason about the case
 -   Apply deterministic recovery policies before any financial action
 -   Execute only bounded, approved recovery actions
--   Generate a real Razorpay Test Mode Payment Link
--   Confirm recovery through Razorpay payment events
+-   Generate a real Stripe Test Mode Payment Link
+-   Confirm recovery through Stripe payment events
 -   Record the prediction, decision, action, and outcome
 -   Maintain an audit trail for the entire lifecycle
 
@@ -54,7 +54,7 @@ authority over financial execution**.
 
 ``` text
                          ┌─────────────────────────┐
-                         │     Razorpay Gateway    │
+                         │     Stripe    │
                          │      Test Mode          │
                          └────────────┬────────────┘
                                       │
@@ -127,14 +127,14 @@ authority over financial execution**.
                                       │
                                       ▼
                          ┌─────────────────────────┐
-                         │ Razorpay Payment Link   │
+                         │ Stripe Checkout Session   │
                          │     Recovery Action     │
                          └────────────┬────────────┘
                                       │
                                       │ Customer payment
                                       ▼
                          ┌─────────────────────────┐
-                         │   Razorpay Payment      │
+                         │   Stripe Payment      │
                          │   Captured / Paid       │
                          └────────────┬────────────┘
                                       │
@@ -178,7 +178,7 @@ Deterministic Policy
 Action Executor
  │
  ▼
-Razorpay
+Stripe
 ```
 
 **The LLM never directly controls the payment API.**
@@ -190,7 +190,7 @@ Razorpay
 ``` text
 1. Customer payment fails
           ↓
-2. Razorpay sends payment.failed webhook
+2. Stripe sends payment_intent.payment_failed webhook
           ↓
 3. Webhook is verified and stored
           ↓
@@ -206,11 +206,11 @@ Razorpay
           ↓
 9. Requested action passes policy safety gate
           ↓
-10. Action Executor creates Razorpay Payment Link
+10. Action Executor creates Stripe Checkout Session
           ↓
 11. Customer completes the recovery payment
           ↓
-12. Razorpay sends payment confirmation webhook
+12. Stripe sends payment confirmation webhook
           ↓
 13. RecoveryOS marks the case recovered
           ↓
@@ -237,7 +237,7 @@ RecoveryOS therefore separates:
   Recovery Policy   Authoritative business rules
   Safety Gate       Validate requested action
   Action Executor   Perform approved operation
-  Razorpay          Payment infrastructure
+  Stripe          Payment infrastructure
   Webhooks          Confirm external payment state
   Audit Trail       Record decisions and outcomes
 
@@ -248,13 +248,13 @@ This creates a clear boundary between **intelligence** and
 
 # 6. Failure Detection & Webhooks
 
-RecoveryOS uses Razorpay webhooks as the event-driven entry point and
+RecoveryOS uses Stripe webhooks as the event-driven entry point and
 source of truth for payment state changes.
 
 The webhook layer provides:
 
 -   Raw request body handling
--   Razorpay signature verification
+-   Stripe CLI local forwarding (signature verification is intentionally skipped in local development)
 -   Webhook event-ID idempotency
 -   Event persistence
 -   Business-event processing
@@ -277,7 +277,7 @@ recovery category.
 Example:
 
 ``` text
-Razorpay Payment
+Stripe Payment
       │
       ├── error_code
       ├── error_step
@@ -395,7 +395,7 @@ Retrieve the recovery case context and understand:
 
 Request a recovery action through bounded tools.
 
-The agent does **not** receive unrestricted Razorpay API access.
+The agent does **not** receive unrestricted Stripe API access.
 
 Conceptually:
 
@@ -413,7 +413,7 @@ NVIDIA Agent
              Action Executor
                     │
                     ▼
-              Razorpay API
+              Stripe API
 ```
 
 This prevents prompt-level reasoning from becoming unrestricted
@@ -421,11 +421,11 @@ financial execution.
 
 ------------------------------------------------------------------------
 
-# 11. Real Razorpay Test Mode Recovery
+# 11. Real Stripe Test Mode Recovery
 
-RecoveryOS uses **Razorpay Test Mode** for the end-to-end demonstration.
+RecoveryOS uses **Stripe Test Mode** for the end-to-end demonstration.
 
-The recovery action creates an actual Razorpay Test Mode Payment Link.
+The recovery action creates an actual Stripe Test Mode Payment Link.
 
 The flow is:
 
@@ -436,7 +436,7 @@ Recovery Case
        ↓
 Policy-approved recovery
        ↓
-Razorpay Payment Link
+Stripe Checkout Session
        ↓
 Customer completes payment
        ↓
@@ -463,7 +463,7 @@ The system tracks:
 -   Recovery case status
 -   Number of recovery attempts
 -   Recovery action
--   External Razorpay identifiers
+-   External Stripe identifiers
 -   ML prediction
 -   ML recommendation
 -   Actual recovery outcome
@@ -556,13 +556,13 @@ RecoveryOS follows a defense-in-depth approach:
                          │
                          ▼
               ┌─────────────────────┐
-              │      Razorpay       │
+              │      Stripe       │
               └─────────────────────┘
 ```
 
 Important safety properties:
 
--   LLM cannot directly call Razorpay
+-   LLM cannot directly call Stripe
 -   Policy controls allowed recovery actions
 -   Unsupported actions are blocked
 -   Automated recovery attempts are bounded
@@ -579,11 +579,11 @@ RecoveryOS persists the recovery lifecycle using PostgreSQL.
 
 ### WebhookEvent
 
-Stores incoming Razorpay webhook events.
+Stores incoming Stripe webhook events.
 
 Key information:
 
--   Razorpay event ID
+-   Stripe event ID
 -   Event type
 -   Payload
 -   Signature validity
@@ -596,7 +596,7 @@ Stores payment state and failure information.
 
 Key information:
 
--   Razorpay payment ID
+-   Stripe payment ID
 -   Order ID
 -   Amount
 -   Currency
@@ -683,9 +683,9 @@ Key information:
 
 ### Payments
 
--   Razorpay Test Mode
--   Razorpay Payment Links
--   Razorpay Webhooks
+-   Stripe Test Mode
+-   Stripe Checkout Sessions
+-   Stripe Webhooks
 
 ### Frontend
 
@@ -700,7 +700,7 @@ Key information:
 # 17. Repository Structure
 
 ``` text
-Razorpay_RecoverOS/
+Stripe_RecoverOS/
 │
 ├── backend/
 │   ├── app/
@@ -759,7 +759,7 @@ The console allows test data such as:
 -   Customer mobile
 -   Payment description
 
-The backend creates a Razorpay Test Mode order and launches Razorpay
+The backend creates a Stripe Test Mode order and launches Stripe
 Checkout.
 
 This keeps the demonstration close to the actual payment lifecycle
@@ -774,7 +774,7 @@ instead of relying on a fake payment simulator.
 -   Python 3.12+
 -   Node.js
 -   PostgreSQL
--   Razorpay Test Mode account
+-   Stripe Test Mode account
 -   NVIDIA API credentials
 
 ## Backend
@@ -852,7 +852,7 @@ other secrets.**
 
 # 21. Webhook Setup
 
-For local development, Razorpay must be able to reach a public webhook
+For local development, Stripe must be able to reach a public webhook
 endpoint.
 
 Configure the webhook URL to point to the backend webhook route through
@@ -862,14 +862,14 @@ Configure a dedicated webhook secret and enable the payment events
 required by the application, including:
 
 ``` text
-payment.failed
+payment_intent.payment_failed
 payment.authorized
-payment.captured
+checkout.session.completed
 order.paid
 ```
 
-RecoveryOS validates the Razorpay webhook signature using the raw
-request body and uses the Razorpay event ID for idempotency.
+RecoveryOS validates the Stripe webhook signature using the raw
+request body and uses the Stripe event ID for idempotency.
 
 ------------------------------------------------------------------------
 
@@ -923,7 +923,7 @@ Approved action
 alternate_payment_method
      │
      ▼
-Razorpay Payment Link
+Stripe Checkout Session
      │
      ▼
 Customer completes payment
@@ -952,7 +952,7 @@ The model can recommend. Deterministic rules decide.
 
 ### 2. External systems are the source of truth
 
-Razorpay payment events confirm payment outcomes.
+Stripe payment events confirm payment outcomes.
 
 ### 3. Financial actions are bounded
 
@@ -968,17 +968,17 @@ A generated payment link is not the same as recovered revenue.
 
 ### 6. Prefer real integrations over simulations
 
-The primary demonstration uses Razorpay Test Mode.
+The primary demonstration uses Stripe Test Mode.
 
 ------------------------------------------------------------------------
 
 # 25. Verified End-to-End Evidence
 
-A real Razorpay Test Mode recovery has been completed through the complete
+A real Stripe Test Mode recovery has been completed through the complete
 workflow:
 
 ```text
-Failed Razorpay payment
+Failed Stripe payment
         ↓
 Recovery Case
         ↓
@@ -986,11 +986,11 @@ ML prediction
         ↓
 Policy-approved recovery
         ↓
-Real Razorpay Test Mode Payment Link
+Real Stripe Test Mode Payment Link
         ↓
 Customer payment
         ↓
-payment.captured webhook
+checkout.session.completed webhook
         ↓
 Recovery Case marked recovered
         ↓
@@ -1046,7 +1046,7 @@ It is a controlled recovery system where:
 
 → **Tools execute**
 
-→ **Razorpay confirms**
+→ **Stripe confirms**
 
 → **Audit records**
 
@@ -1058,7 +1058,7 @@ That separation is the core architectural idea behind the project.
 
 # 28. Security & Safety Notes
 
-This project is intended for demonstration using Razorpay Test Mode.
+This project is intended for demonstration using Stripe Test Mode.
 
 For production deployment, additional controls would be required,
 including appropriate authentication/authorization, secret management,
@@ -1072,7 +1072,7 @@ repository.
 
 The current prototype also distinguishes between **action execution** and
 **confirmed recovery**: creating a Payment Link is not counted as recovered
-revenue until Razorpay confirms the resulting payment.
+revenue until Stripe confirms the resulting payment.
 
 The recovery policy defines a 30-minute cooldown for bank-decline recovery.
 Runtime elapsed-time enforcement should be completed before describing that
@@ -1086,7 +1086,7 @@ cooldown as an enforced production control.
 
 Implemented:
 
--   [x] Razorpay Test Mode integration
+-   [x] Stripe Test Mode integration
 -   [x] Payment failure detection
 -   [x] Failure classification
 -   [x] Recovery cases
@@ -1095,7 +1095,7 @@ Implemented:
 -   [x] NVIDIA recovery agent
 -   [x] Policy-enforced agent tools
 -   [x] Bounded recovery execution
--   [x] Razorpay Payment Link recovery
+-   [x] Stripe Checkout Session recovery
 -   [x] Webhook-based recovery confirmation
 -   [x] Recovery outcome recording
 -   [x] ML outcome evaluation
@@ -1108,9 +1108,9 @@ Implemented:
 
 # 30. Official Resources
 
--   [Razorpay](https://razorpay.com/)
--   [Razorpay Documentation](https://razorpay.com/docs/)
--   [Razorpay Buildathon](https://razorpay.com/buildathon/)
+-   [Stripe](https://razorpay.com/)
+-   [Stripe Documentation](https://razorpay.com/docs/)
+-   [Stripe Buildathon](https://razorpay.com/buildathon/)
 -   [NVIDIA NIM](https://build.nvidia.com/)
 
 ------------------------------------------------------------------------
@@ -1119,7 +1119,7 @@ Implemented:
 
 **Shashin**
 
-Built for the Razorpay AI Buildathon.
+Built for the Stripe AI Buildathon.
 
 ------------------------------------------------------------------------
 
@@ -1136,7 +1136,7 @@ NVIDIA agent reasoning
     ↓
 Deterministic policy
     ↓
-Razorpay Payment Link
+Stripe Checkout Session
     ↓
 Customer payment
     ↓
