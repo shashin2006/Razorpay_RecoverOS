@@ -1,0 +1,6 @@
+{
+  "name": "RecoveryOS",
+  "description": "AI-assisted revenue recovery control center with deterministic policy controls and Razorpay test mode execution.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
