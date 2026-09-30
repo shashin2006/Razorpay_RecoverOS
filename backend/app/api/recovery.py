@@ -68,7 +68,7 @@ def get_recovery_case(
     payment = (
         db.query(Payment)
         .filter(
-            Payment.razorpay_payment_id == case.payment_id
+            Payment.provider_payment_id == case.payment_id
         )
         .first()
     )
@@ -122,8 +122,8 @@ def get_recovery_case(
 
         "payment": (
             {
-                "razorpay_payment_id": payment.razorpay_payment_id,
-                "razorpay_order_id": payment.razorpay_order_id,
+                "provider_payment_id": payment.provider_payment_id,
+                "provider_order_id": payment.provider_order_id,
                 "amount_minor": payment.amount_minor,
                 "currency": payment.currency,
                 "method": payment.method,
@@ -224,7 +224,7 @@ def get_recovery_case_audit(
     payment = (
         db.query(Payment)
         .filter(
-            Payment.razorpay_payment_id == case.payment_id
+            Payment.provider_payment_id == case.payment_id
         )
         .first()
     )
@@ -237,7 +237,7 @@ def get_recovery_case_audit(
                 "status": payment.status,
                 "title": "Payment recorded",
                 "description": (
-                    f"Payment {payment.razorpay_payment_id} "
+                    f"Payment {payment.provider_payment_id} "
                     f"was recorded."
                 ),
             }
