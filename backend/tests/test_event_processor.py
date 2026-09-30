@@ -2,49 +2,45 @@ from app.db.models import Payment
 from app.services.event_processor import process_webhook_event
 
 
-def test_process_failed_payment(db_session):
-
+def test_process_failed_stripe_payment(db_session):
     payload = {
-        "event": "payment.failed",
-        "entity": "event",
-        "payload": {
-            "payment": {
-                "entity": {
-                    "id": "pay_processor_test_001",
-                    "amount": 50000,
-                    "currency": "INR",
-                    "method": "netbanking",
-                    "status": "failed",
-                    "order_id": "order_processor_test_001",
-                    "error_code": "BAD_REQUEST_ERROR",
-                    "error_step": "payment_authorization",
-                    "error_reason": "payment_failed",
-                    "error_source": "bank",
-                    "error_description": "Bank declined payment.",
-                }
+        "id": "evt_test_failed_001",
+        "type": "payment_intent.payment_failed",
+        "data": {
+            "object": {
+                "id": "pi_test_001",
+                "amount": 50000,
+                "currency": "inr",
+                "payment_method_types": ["card"],
+                "status": "requires_payment_method",
+                "last_payment_error": {
+                    "code": "card_declined",
+                    "decline_code": "generic_decline",
+                    "message": "Your card was declined.",
+                },
+                "created": 1788104210,
             }
         },
     }
 
     process_webhook_event(
         db=db_session,
-        event_type="payment.failed",
+        event_type="payment_intent.payment_failed",
         payload=payload,
     )
 
     payment = (
         db_session.query(Payment)
-        .filter(
-            Payment.razorpay_payment_id
-            == "pay_processor_test_001"
-        )
+        .filter(Payment.provider_payment_id == "pi_test_001")
         .first()
     )
 
     assert payment is not None
+    assert payment.provider == "stripe"
     assert payment.amount_minor == 50000
     assert payment.currency == "INR"
     assert payment.status == "failed"
-    assert payment.method == "netbanking"
-    assert payment.error_source == "bank"
+    assert payment.method == "card"
+    assert payment.error_source == "stripe"
     assert payment.error_step == "payment_authorization"
+    assert payment.error_reason == "payment_failed"
