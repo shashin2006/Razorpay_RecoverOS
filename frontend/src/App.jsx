@@ -241,7 +241,7 @@ export default function App() {
             <span className="font-bold text-sm tracking-tight">RecoveryOS</span>
           </div>
           <span className="text-[11px] font-mono text-amber-400 bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800">
-            Razorpay Test Mode
+            Stripe Test Mode
           </span>
         </div>
 
