@@ -1,5 +1,5 @@
-from enum import Enum
 from dataclasses import dataclass
+from enum import Enum
 
 
 class FailureCategory(str, Enum):
@@ -15,6 +15,7 @@ class Recoverability(str, Enum):
     CUSTOMER_ACTION_REQUIRED = "customer_action_required"
     UNKNOWN = "unknown"
 
+
 @dataclass
 class FailureClassification:
     category: FailureCategory
@@ -22,25 +23,26 @@ class FailureClassification:
     customer_action_required: bool
     reason: str
 
-def classify_failure(payment: dict) -> FailureClassification:
 
+def classify_failure(payment: dict) -> FailureClassification:
     error_source = payment.get("error_source")
     error_step = payment.get("error_step")
     error_reason = payment.get("error_reason")
     error_code = payment.get("error_code")
 
     if (
-        error_source == "bank"
-        and error_step == "payment_authorization"
+        error_step == "payment_authorization"
         and error_reason == "payment_failed"
+        and error_source in {"bank", "stripe"}
     ):
         return FailureClassification(
             category=FailureCategory.BANK_DECLINE,
             recoverability=Recoverability.RECOVERABLE,
             customer_action_required=True,
             reason=(
-                "Payment was declined by the bank "
-                "during authorization."
+                "Payment was declined during authorization."
+                if error_source == "stripe"
+                else "Payment was declined by the bank during authorization."
             ),
         )
 
