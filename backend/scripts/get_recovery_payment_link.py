@@ -1,27 +1,18 @@
-import os
+import stripe
 
-import razorpay
-from dotenv import load_dotenv
+from app.core.config import settings
 
 
-load_dotenv()
+stripe.api_key = settings.stripe_secret_key
 
-client = razorpay.Client(
-    auth=(
-        os.getenv("RAZORPAY_KEY_ID"),
-        os.getenv("RAZORPAY_KEY_SECRET"),
-    )
-)
+CHECKOUT_SESSION_ID = "cs_test_replace_me"
 
-payment_link_id = "plink_TWIwpD6da3KIWm"
+session = stripe.checkout.Session.retrieve(CHECKOUT_SESSION_ID)
 
-payment_link = client.payment_link.fetch(
-    payment_link_id
-)
-
-print("Payment Link:")
-print("ID:", payment_link["id"])
-print("Status:", payment_link["status"])
-print("Amount:", payment_link["amount"])
-print("Currency:", payment_link["currency"])
-print("Short URL:", payment_link["short_url"])
+print("Stripe Checkout Session:")
+print("ID:", session.id)
+print("Status:", session.status)
+print("Payment Status:", session.payment_status)
+print("Amount:", session.amount_total)
+print("Currency:", session.currency)
+print("URL:", session.url)
