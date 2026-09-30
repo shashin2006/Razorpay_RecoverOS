@@ -437,22 +437,58 @@
         return data;
     }
 
-    function launchCheckout(order) {
-        if (!order?.checkout_url) {
-            throw new Error("Stripe Checkout URL was not returned.");
+    async function waitForRecoveryCheckout(paymentIntentId) {
+        const maxChecks = 30;
+        for (let attempt = 1; attempt <= maxChecks; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            const response = await fetch("/api/recovery/cases", {
+                headers: { "Accept": "application/json" }
+            });
+            if (!response.ok) continue;
+            const data = await response.json();
+            const recoveryCase = (data.cases || []).find(item => item.payment_id === paymentIntentId);
+            if (!recoveryCase) continue;
+            setPill("monitor-pill", "Recovery Created", "processing");
+            step("step-webhook", "complete");
+            step("step-recovery", "active");
+            addEvent("Recovery case created", "RECOVERY", "success");
+            const detailResponse = await fetch("/api/recovery/cases/" + recoveryCase.id, {
+                headers: { "Accept": "application/json" }
+            });
+            if (!detailResponse.ok) continue;
+            const detail = await detailResponse.json();
+            const checkoutUrl = detail.latest_action?.payment_link_url;
+            if (checkoutUrl) {
+                setPill("monitor-pill", "Checkout Ready", "success");
+                step("step-recovery", "complete");
+                addEvent("Stripe recovery Checkout ready", "READY", "success");
+                status.textContent = "Recovery action created. Opening Stripe Checkout...";
+                window.location.href = checkoutUrl;
+                return;
+            }
         }
+        throw new Error("Recovery case or Stripe Checkout session was not created within the expected time.");
+    }
 
-        setPill("state-pill", "Checkout Ready", "processing");
-        setPill("monitor-pill", "Checkout", "processing");
+    function launchCheckout(order) {
+        if (!order?.payment_intent_id) throw new Error("Stripe PaymentIntent ID was not returned.");
+        setPill("state-pill", "Payment Failed", "failed");
+        setPill("monitor-pill", "Webhook Pending", "processing");
         step("step-order", "complete");
-        step("step-checkout", "active");
-
-        document.getElementById("order-pill").textContent = "Created";
-        status.textContent = "Stripe Checkout is opening in a new page.";
-        addEvent("Stripe Checkout session created", "CREATED", "success");
-        toast("Stripe Checkout session created.", "success");
-
-        window.location.href = order.checkout_url;
+        step("step-checkout", "error");
+        step("step-webhook", "active");
+        document.getElementById("order-pill").textContent = "Payment failed";
+        status.textContent = "Stripe Test Mode payment failed. Waiting for the RecoveryOS webhook.";
+        addEvent("Stripe payment failed", "FAILED", "error");
+        toast("Payment failed — waiting for RecoveryOS recovery.", "error");
+        waitForRecoveryCheckout(order.payment_intent_id).catch(error => {
+            createButton.disabled = false;
+            createButton.textContent = "Create New Test Payment";
+            setPill("monitor-pill", "Recovery Error", "failed");
+            status.textContent = "Recovery workflow did not complete.";
+            showError(error.message);
+            addEvent("Recovery workflow timed out", "ERROR", "error");
+        });
     }
 
     form.addEventListener("submit", async function (event) {
@@ -479,7 +515,7 @@
         }
 
         createButton.disabled = true;
-        createButton.textContent = "Creating Test Order...";
+        createButton.textContent = "Creating Test Payment...";
         setPill("state-pill", "Creating", "processing");
         status.textContent = "Sending your test inputs to RecoveryOS...";
 
@@ -527,8 +563,8 @@
                 "success"
             );
 
-            status.textContent = "Order created. Opening Stripe Checkout...";
-            toast("Test Mode order created.", "success");
+            status.textContent = "Stripe Test Mode payment created. Waiting for recovery...";
+            toast("Stripe Test Mode payment created.", "success");
 
             launchCheckout(currentOrder);
 
