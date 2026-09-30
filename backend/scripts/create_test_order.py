@@ -1,28 +1,18 @@
-import os
+import stripe
+from app.core.config import settings
 
-import razorpay
-from dotenv import load_dotenv
+stripe.api_key = settings.stripe_secret_key
 
-
-load_dotenv()
-
-client = razorpay.Client(
-    auth=(
-        os.getenv("RAZORPAY_KEY_ID"),
-        os.getenv("RAZORPAY_KEY_SECRET"),
-    )
+payment_intent = stripe.PaymentIntent.create(
+    amount=50000,
+    currency="inr",
+    payment_method="pm_card_chargeDeclined",
+    confirm=True,
+    metadata={"recoveryos_test": "true"},
 )
 
-order = client.order.create(
-    {
-        "amount": 50000,
-        "currency": "INR",
-        "receipt": "recoveryos_auto_test_003",
-    }
-)
-
-print("Order created:")
-print("Order ID:", order["id"])
-print("Amount:", order["amount"])
-print("Currency:", order["currency"])
-print("Receipt:", order["receipt"])
+print("Stripe PaymentIntent:")
+print("ID:", payment_intent.id)
+print("Status:", payment_intent.status)
+print("Amount:", payment_intent.amount)
+print("Currency:", payment_intent.currency)
