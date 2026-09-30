@@ -97,7 +97,7 @@
                 <div class="brand-subtitle">Revenue Recovery Test Console</div>
             </div>
         </div>
-        <div class="badge"><span class="dot"></span> RAZORPAY TEST MODE</div>
+        <div class="badge"><span class="dot"></span> STRIPE TEST MODE</div>
     </header>
 
     <section class="hero">
@@ -106,8 +106,8 @@
             <h1>Configure your test transaction.</h1>
             <p class="hero-copy">
                 Enter the customer and transaction details below. RecoveryOS
-                will create a real Razorpay Test Mode order only after you
-                submit the form, then launch Razorpay Checkout with those
+                will create a real Stripe Test Mode order only after you
+                submit the form, then launch Stripe Checkout with those
                 details.
             </p>
         </div>
@@ -125,7 +125,7 @@
             <div class="title-row">
                 <div>
                     <h2>Test Transaction Input</h2>
-                    <p class="desc">These values are used to create the Razorpay Test Mode order.</p>
+                    <p class="desc">These values are used to create the Stripe Test Mode order.</p>
                 </div>
                 <span class="pill ready" id="state-pill">Not created</span>
             </div>
@@ -179,7 +179,7 @@
                 </div>
 
                 <button class="primary" id="create-button" type="submit">
-                    Create Test Order &amp; Open Checkout
+                    Create Test Payment &amp; Start Checkout
                 </button>
             </form>
 
@@ -227,7 +227,7 @@
                 </div>
                 <div class="row">
                     <span class="row-label">Environment</span>
-                    <span class="row-value">Razorpay Test Mode</span>
+                    <span class="row-value">Stripe Test Mode</span>
                 </div>
             </div>
 
@@ -236,7 +236,7 @@
                 <span>
                     No real money is processed. This console sends the entered
                     values to your FastAPI backend, which creates the order
-                    using your Razorpay Test Mode credentials.
+                    using your Stripe Test Mode credentials.
                 </span>
             </div>
         </section>
@@ -263,14 +263,14 @@
                 <div class="step" id="step-checkout">
                     <span class="step-dot"></span>
                     <div class="step-no">STEP 02</div>
-                    <div class="step-title">Razorpay Checkout</div>
-                    <div class="step-desc">The real Razorpay sandbox checkout opens using the generated order.</div>
+                    <div class="step-title">Stripe Checkout</div>
+                    <div class="step-desc">The real Stripe sandbox checkout opens using the generated order.</div>
                 </div>
                 <div class="step" id="step-webhook">
                     <span class="step-dot"></span>
                     <div class="step-no">STEP 03</div>
                     <div class="step-title">Webhook</div>
-                    <div class="step-desc">Razorpay sends the payment event to the RecoveryOS webhook endpoint.</div>
+                    <div class="step-desc">Stripe sends the payment event to the RecoveryOS webhook endpoint.</div>
                 </div>
                 <div class="step" id="step-recovery">
                     <span class="step-dot"></span>
@@ -304,7 +304,7 @@
     </main>
 
     <div class="footer">
-        RecoveryOS · Razorpay Test Mode · Deterministic policy remains authoritative
+        RecoveryOS · Stripe Test Mode · Deterministic policy remains authoritative
     </div>
 </div>
 
@@ -313,8 +313,7 @@
 <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 
 <script>
-    const RAZORPAY_KEY = "{{ razorpay_key_id }}";
-    const ORDER_API = "/api/test-checkout/order";
+        const ORDER_API = "/api/test-checkout/order";
 
     const form = document.getElementById("test-form");
     const createButton = document.getElementById("create-button");
@@ -439,87 +438,21 @@
     }
 
     function launchCheckout(order) {
-        if (typeof Razorpay === "undefined") {
-            throw new Error("Razorpay Checkout could not be loaded.");
+        if (!order?.checkout_url) {
+            throw new Error("Stripe Checkout URL was not returned.");
         }
 
-        const rzp = new Razorpay({
-            key: RAZORPAY_KEY,
-            amount: order.amount,
-            currency: order.currency,
-            name: "RecoveryOS",
-            description: order.description,
-            order_id: order.order_id,
-
-            prefill: {
-                name: order.customer.name,
-                email: order.customer.email,
-                contact: order.customer.contact
-            },
-
-            notes: {
-                recoveryos_test: "true",
-                test_order_id: order.order_id
-            },
-
-            theme: {
-                color: "#5146e5"
-            },
-
-            modal: {
-                ondismiss: function () {
-                    createButton.disabled = false;
-                    createButton.textContent = "Create Test Order & Open Checkout";
-
-                    setPill("state-pill", "Ready", "ready");
-                    setPill("monitor-pill", "Waiting");
-
-                    step("step-checkout", null);
-
-                    status.textContent =
-                        "Checkout closed. The order remains available in Razorpay Test Mode.";
-
-                    addEvent("Razorpay Checkout closed", "CLOSED");
-                }
-            }
-        });
-
-        rzp.on("payment.failed", function (response) {
-            createButton.disabled = false;
-            createButton.textContent = "Create New Test Order";
-
-            setPill("state-pill", "Payment Failed", "failed");
-            setPill("monitor-pill", "Webhook Pending", "processing");
-
-            step("step-checkout", "error");
-            step("step-webhook", "active");
-
-            document.getElementById("order-pill").textContent = "Payment failed";
-
-            status.textContent =
-                "Payment failed in Test Mode. RecoveryOS is waiting for the Razorpay webhook.";
-
-            addEvent("Razorpay payment failed", "FAILED", "error");
-            toast("Payment failed — webhook should reach RecoveryOS.", "error");
-
-            console.log("Razorpay payment.failed:", response);
-        });
-
-        rzp.on("payment.authorized", function (response) {
-            console.log("Razorpay payment.authorized:", response);
-        });
-
-        rzp.open();
-
-        setPill("state-pill", "Checkout Open", "processing");
+        setPill("state-pill", "Checkout Ready", "processing");
         setPill("monitor-pill", "Checkout", "processing");
         step("step-order", "complete");
         step("step-checkout", "active");
 
         document.getElementById("order-pill").textContent = "Created";
-        status.textContent = "Razorpay Test Mode Checkout is open.";
+        status.textContent = "Stripe Checkout is opening in a new page.";
+        addEvent("Stripe Checkout session created", "CREATED", "success");
+        toast("Stripe Checkout session created.", "success");
 
-        addEvent("Razorpay Checkout opened", "OPENED");
+        window.location.href = order.checkout_url;
     }
 
     form.addEventListener("submit", async function (event) {
@@ -550,7 +483,7 @@
         setPill("state-pill", "Creating", "processing");
         status.textContent = "Sending your test inputs to RecoveryOS...";
 
-        addEvent("Creating Razorpay Test Mode order", "PROCESSING");
+        addEvent("Creating Stripe Test Mode order", "PROCESSING");
 
         try {
             currentOrder = await createOrder({
@@ -572,36 +505,36 @@
                 currentOrder.currency + " · Test Mode";
 
             document.getElementById("order-id").textContent =
-                currentOrder.order_id;
+                currentOrder.payment_intent_id;
             document.getElementById("order-amount").textContent =
                 "₹" + (currentOrder.amount / 100).toLocaleString("en-IN", {
                     minimumFractionDigits: 2,
                     maximumFractionDigits: 2
                 });
             document.getElementById("order-customer").textContent =
-                currentOrder.customer.name;
+                customerName;
             document.getElementById("order-email").textContent =
-                currentOrder.customer.email;
+                customerEmail;
             document.getElementById("order-description").textContent =
-                currentOrder.description;
+                description;
 
             setPill("state-pill", "Order Created", "success");
             setPill("order-pill", "Created", "success");
 
             addEvent(
-                "Razorpay Test Mode order created",
+                "Stripe Test Mode order created",
                 "CREATED",
                 "success"
             );
 
-            status.textContent = "Order created. Opening Razorpay Checkout...";
+            status.textContent = "Order created. Opening Stripe Checkout...";
             toast("Test Mode order created.", "success");
 
             launchCheckout(currentOrder);
 
         } catch (error) {
             createButton.disabled = false;
-            createButton.textContent = "Create Test Order & Open Checkout";
+            createButton.textContent = "Create Test Payment & Start Checkout";
 
             setPill("state-pill", "Error", "failed");
             status.textContent = "Order creation failed.";
