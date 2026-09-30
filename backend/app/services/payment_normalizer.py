@@ -1,76 +1,57 @@
-from typing import Any
 from datetime import datetime, timezone
+from typing import Any
 
 
-def normalize_payment(
-    payload: dict[str, Any]
-) -> dict[str, Any]:
-
+def normalize_payment(payload: dict[str, Any]) -> dict[str, Any]:
     intent = payload.get("data", {}).get("object", {})
-
     if not intent:
-        raise ValueError(
-            "PaymentIntent missing from Stripe payload"
-        )
+        raise ValueError("PaymentIntent missing from Stripe payload")
 
     payment_id = intent.get("id")
-
     if not payment_id:
-        raise ValueError(
-            "Stripe PaymentIntent ID missing"
-        )
+        raise ValueError("Stripe PaymentIntent ID missing")
 
+    event_type = payload.get("type")
     created_timestamp = intent.get("created")
-
     created_at = (
-        datetime.fromtimestamp(
-            created_timestamp,
-            tz=timezone.utc,
-        )
+        datetime.fromtimestamp(created_timestamp, tz=timezone.utc)
         if created_timestamp
         else datetime.now(timezone.utc)
     )
 
     last_error = intent.get("last_payment_error") or {}
+    is_failed = event_type == "payment_intent.payment_failed"
+    is_succeeded = event_type == "payment_intent.succeeded"
 
     return {
         "provider": "stripe",
-
         "provider_payment_id": payment_id,
-
         "provider_order_id": (
-            intent.get("metadata", {})
-            .get("recoveryos_order_id")
+            intent.get("metadata", {}).get("recoveryos_order_id")
         ),
-
         "amount_minor": intent.get("amount", 0),
-
-        "currency": (
-            intent.get("currency") or ""
-        ).upper(),
-
+        "currency": (intent.get("currency") or "").upper(),
         "method": (
             intent.get("payment_method_types", ["card"])[0]
             if intent.get("payment_method_types")
             else "card"
         ),
-
-        "status": intent.get("status"),
-
+        # Keep the existing RecoverOS state machine provider-neutral.
+        "status": (
+            "failed"
+            if is_failed
+            else "captured"
+            if is_succeeded
+            else intent.get("status") or "unknown"
+        ),
         "error_code": last_error.get("code"),
-
-        "error_step": "payment",
-
+        "error_step": "payment_authorization" if is_failed else "payment",
         "error_reason": (
-            last_error.get("decline_code")
-            or last_error.get("code")
+            "payment_failed"
+            if is_failed
+            else last_error.get("decline_code") or last_error.get("code")
         ),
-
         "error_source": "stripe",
-
-        "error_description": last_error.get(
-            "message"
-        ),
-
+        "error_description": last_error.get("message"),
         "created_at": created_at,
     }
