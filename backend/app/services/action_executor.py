@@ -9,11 +9,6 @@ from app.services.payment_link import (
     create_recovery_payment_link,
 )
 
-import stripe
-from app.core.config import settings
-
-stripe.api_key = settings.stripe_secret_key
-
 # Hard safety ceiling.
 # No automated recovery workflow can exceed this number.
 MAX_AUTOMATED_RECOVERY_ATTEMPTS = 2
@@ -96,7 +91,7 @@ def execute_recovery_action(
             )
 
             print(
-                "Razorpay Payment Link:",
+                "Stripe Checkout Session:",
                 payment_link,
             )
 
@@ -132,7 +127,7 @@ def execute_recovery_action(
                 payment_link_url=payment_link.get(
                     "short_url"
                 ),
-                message="Recovery payment link created.",
+                message="Stripe recovery Checkout Session created.",
             )
 
         except Exception as exc:
