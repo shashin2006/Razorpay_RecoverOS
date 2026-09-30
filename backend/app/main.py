@@ -1,47 +1,42 @@
-from fastapi import FastAPI, Depends, Request, HTTPException
-from sqlalchemy import text
-from sqlalchemy.orm import Session
-from fastapi.responses import HTMLResponse
-from fastapi.templating import Jinja2Templates
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, field_validator
-
-import stripe
 from pathlib import Path
 import re
 
-from app.db.database import Base, engine, get_db
-from app.db import models
-from app.api.webhooks import router as webhook_router
-from app.api.ml import router as ml_router
-from app.core.logging_config import configure_logging
-from app.core.config import settings
+import stripe
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from pydantic import BaseModel, Field, field_validator
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
 from app.api.agent import router as agent_router
-from app.api.recovery_agent import router as rec_agent_router
+from app.api.ml import router as ml_router
 from app.api.recovery import router as recovery_router
+from app.api.recovery_agent import router as rec_agent_router
+from app.api.webhooks import router as webhook_router
+from app.core.config import settings
+from app.core.logging_config import configure_logging
+from app.db import models
+from app.db.database import Base, engine, get_db
+
 
 Base.metadata.create_all(bind=engine)
-
 configure_logging()
 
 app = FastAPI(title="RecoveryOS")
-
-import stripe
-
 stripe.api_key = settings.stripe_secret_key
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-templates = Jinja2Templates(
-    directory=str(BASE_DIR / "templates")
-)
+templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
         "http://127.0.0.1:3000",
-        "http://127.0.0.1:8000",
         "http://localhost:8000",
+        "http://127.0.0.1:8000",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -57,19 +52,13 @@ app.include_router(recovery_router)
 
 @app.get("/health")
 async def health():
-    return {
-        "status": "ok",
-        "service": "recovery-os",
-    }
+    return {"status": "ok", "service": "recovery-os"}
 
 
 @app.get("/health/db")
 async def database_health(db: Session = Depends(get_db)):
     result = db.execute(text("SELECT 1"))
-    return {
-        "status": "ok",
-        "database": result.scalar(),
-    }
+    return {"status": "ok", "database": result.scalar()}
 
 
 class TestCheckoutOrderRequest(BaseModel):
@@ -111,19 +100,17 @@ class TestCheckoutOrderRequest(BaseModel):
 
 @app.post("/api/test-checkout/order")
 def create_test_payment(payload: TestCheckoutOrderRequest):
-
     try:
-        payment_method = "pm_card_chargeDeclined"
-
         intent = stripe.PaymentIntent.create(
             amount=payload.amount * 100,
             currency=payload.currency.lower(),
-            payment_method=payment_method,
+            payment_method="pm_card_chargeDeclined",
             confirm=True,
             metadata={
                 "recoveryos_test": "true",
                 "customer_name": payload.customer_name,
                 "customer_email": payload.customer_email,
+                "customer_contact": payload.customer_contact,
             },
         )
 
@@ -132,47 +119,32 @@ def create_test_payment(payload: TestCheckoutOrderRequest):
             "payment_intent_id": intent.id,
             "status": intent.status,
             "amount": intent.amount,
-            "currency": intent.currency,
+            "currency": intent.currency.upper(),
             "environment": "Stripe Test Mode",
         }
 
     except stripe.error.CardError as exc:
-        payment_intent = (
-            exc.payment_intent
-            if hasattr(exc, "payment_intent")
-            else None
-        )
-
+        payment_intent = getattr(exc, "payment_intent", None)
         return {
             "ok": True,
-            "payment_intent_id": (
-                payment_intent.id
-                if payment_intent
-                else None
-            ),
+            "payment_intent_id": payment_intent.id if payment_intent else None,
             "status": "failed",
+            "amount": payload.amount * 100,
+            "currency": payload.currency,
             "environment": "Stripe Test Mode",
         }
-    
+
     except Exception as exc:
         raise HTTPException(
             status_code=502,
-            detail=f"Unable to create Razorpay Test Mode order: {str(exc)}",
-        )
+            detail=f"Unable to create Stripe Test Mode payment: {exc}",
+        ) from exc
 
 
 @app.get("/test-checkout", response_class=HTMLResponse)
 def test_checkout(request: Request):
-    """
-    Render the dynamic Test Console.
-
-    No payment order is created until the user submits
-    the Test Console form.
-    """
     return templates.TemplateResponse(
         request=request,
         name="test_checkout.html",
-        context={
-            "razorpay_key_id": settings.razorpay_key_id,
-        },
+        context={},
     )
